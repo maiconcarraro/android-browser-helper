@@ -65,6 +65,26 @@ import androidx.browser.customtabs.TrustedWebUtils;
 public class TwaProviderPicker {
     private static final String TAG = "TWAProviderPicker";
     private static String sPackageNameForTesting;
+    private static String[] preferredProviders = {
+        "com.android.chrome", // CHROME
+        "com.chrome.beta", // CHROME_BETA
+        "com.chrome.dev", // CHROME_DEV
+        "com.chrome.canary", // CHROME_CANARY
+        "com.google.android.apps.chrome", // CHROME_LOCAL_BUILD
+        "org.chromium.chrome", // CHROMIUM_LOCAL_BUILD
+        "com.microsoft.emmx", // MICROSOFT_EDGE
+        "org.mozilla.firefox", // FIREFOX
+        "org.mozilla.firefox_beta", // FIREFOX_BETA
+        "org.mozilla.fennec_aurora", // FIREFOX_AURORA
+        "org.mozilla.fennec", // FIREFOX_FENNEC_NIGHTLY
+        "org.mozilla.fennec_fdroid", // FIREFOX_FDROID
+        "org.mozilla.rocket", // FIREFOX_LITE
+        "org.mozilla.fenix", // FIREFOX_NIGHTLY
+        "com.opera.browser", // OPERA
+        "com.opera.browser.beta", // OPERA_BETA
+        "com.opera.mini.native", // OPERA_MINI
+        "com.opera.mini.native.beta" // OPERA_MINI_BETA
+    };
 
     @IntDef({LaunchMode.TRUSTED_WEB_ACTIVITY, LaunchMode.CUSTOM_TAB, LaunchMode.BROWSER})
     @Retention(RetentionPolicy.SOURCE)
@@ -139,9 +159,36 @@ public class TwaProviderPicker {
         }
 
         Map<String, Integer> customTabsServices = getLaunchModesForCustomTabsServices(pm);
+        String preferredProviderName = "";
+
+        // Loop preferred providers to use as preference order
+        for (String preferredProvider : preferredProviders) {
+            for (ResolveInfo possibleProvider : possibleProviders) {
+                String providerName = possibleProvider.activityInfo.packageName;
+
+                if (providerName.equals(preferredProvider)) {
+                    Log.d(TAG, "Found provider from preferred providers list: " + providerName);
+                    preferredProviderName = preferredProvider;
+                    break;
+                }
+            }
+
+            if (!preferredProviderName.equals("")) {
+                break;
+            }
+        }
+        
+        
+        if (preferredProviderName.equals("")) {
+            Log.d(TAG, "Provider not in preferred providers list");
+        }
 
         for (ResolveInfo possibleProvider : possibleProviders) {
             String providerName = possibleProvider.activityInfo.packageName;
+
+            if (!preferredProviderName.equals("") && !providerName.equals(preferredProviderName)) {
+                continue;
+            }
 
             @LaunchMode int launchMode = customTabsServices.containsKey(providerName)
                     ? customTabsServices.get(providerName) : LaunchMode.BROWSER;
