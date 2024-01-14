@@ -17,7 +17,7 @@
 apply plugin: 'com.android.library'
 apply plugin: 'maven-publish'
 
-def VERSION = "2.5.0";
+def VERSION = "2.6.0";
 
 android {
     compileSdkVersion 31
@@ -57,6 +57,7 @@ dependencies {
 
     implementation 'androidx.annotation:annotation:1.1.0'
     implementation 'androidx.core:core:1.0.2'
+    implementation 'androidx.appcompat:appcompat:1.2.0'
 
     testImplementation 'junit:junit:4.12'
     testImplementation 'org.mockito:mockito-core:3.0.0'
@@ -75,7 +76,7 @@ publishing {
         Production(MavenPublication) {
             pom {
                 name = 'android-browser-helper'
-                url = 'https://github.com/GoogleChrome/android-browser-helper'
+                url = 'https://github.com/maiconcarraro/android-browser-helper'
                 licenses {
                     license {
                         name = 'The Apache License, Version 2.0'
