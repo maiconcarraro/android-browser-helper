@@ -73,13 +73,6 @@ public class TwaProviderPicker {
         "com.google.android.apps.chrome", // CHROME_LOCAL_BUILD
         "org.chromium.chrome", // CHROMIUM_LOCAL_BUILD
         "com.microsoft.emmx", // MICROSOFT_EDGE
-        "org.mozilla.firefox", // FIREFOX
-        "org.mozilla.firefox_beta", // FIREFOX_BETA
-        "org.mozilla.fennec_aurora", // FIREFOX_AURORA
-        "org.mozilla.fennec", // FIREFOX_FENNEC_NIGHTLY
-        "org.mozilla.fennec_fdroid", // FIREFOX_FDROID
-        "org.mozilla.rocket", // FIREFOX_LITE
-        "org.mozilla.fenix", // FIREFOX_NIGHTLY
         "com.opera.browser", // OPERA
         "com.opera.browser.beta", // OPERA_BETA
         "com.opera.mini.native", // OPERA_MINI

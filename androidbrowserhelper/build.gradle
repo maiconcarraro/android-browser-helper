@@ -20,11 +20,12 @@ apply plugin: 'maven-publish'
 def VERSION = "2.6.0";
 
 android {
-    compileSdkVersion 31
+    namespace "com.google.androidbrowserhelper"
+    compileSdk 34
 
     defaultConfig {
         minSdkVersion 16
-        targetSdkVersion 31
+        targetSdk 34
         versionCode 1
         versionName VERSION
 
@@ -67,7 +68,7 @@ dependencies {
     androidTestImplementation 'androidx.test:rules:1.2.0'
     androidTestImplementation 'androidx.test.ext:junit:1.1.1'
     androidTestImplementation 'org.mockito:mockito-core:3.0.0'
-    androidTestImplementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.0'
+    // androidTestImplementation 'com.linkedin.dexmaker:dexmaker-mockito:2.19.0'
     androidTestImplementation 'junit:junit:4.12'
 }
 
