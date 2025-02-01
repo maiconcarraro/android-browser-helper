@@ -65,7 +65,7 @@ import androidx.browser.customtabs.TrustedWebUtils;
 public class TwaProviderPicker {
     private static final String TAG = "TWAProviderPicker";
     private static String sPackageNameForTesting;
-    private static String[] preferredProviders = {
+    private static final String[] preferredProviders = {
         "com.android.chrome", // CHROME
         "com.chrome.beta", // CHROME_BETA
         "com.chrome.dev", // CHROME_DEV
@@ -166,20 +166,20 @@ public class TwaProviderPicker {
                 }
             }
 
-            if (!preferredProviderName.equals("")) {
+            if (!preferredProviderName.isEmpty()) {
                 break;
             }
         }
         
         
-        if (preferredProviderName.equals("")) {
-            Log.d(TAG, "Provider not in preferred providers list");
+        if (preferredProviderName.isEmpty()) {
+            Log.d(TAG, "Provider not in preferred providers list.");
         }
 
         for (ResolveInfo possibleProvider : possibleProviders) {
             String providerName = possibleProvider.activityInfo.packageName;
 
-            if (!preferredProviderName.equals("") && !providerName.equals(preferredProviderName)) {
+            if (!preferredProviderName.isEmpty() && !providerName.equals(preferredProviderName)) {
                 continue;
             }
 

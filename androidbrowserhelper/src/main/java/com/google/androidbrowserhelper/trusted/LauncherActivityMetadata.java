@@ -74,14 +74,14 @@ public class LauncherActivityMetadata {
      * from version 86).
      */
     private static final String METADATA_NAVIGATION_BAR_DIVIDER_COLOR_ID =
-            "androix.browser.trusted.NAVIGATION_BAR_DIVIDER_COLOR";
+            "androidx.browser.trusted.NAVIGATION_BAR_DIVIDER_COLOR";
 
     /**
      * Navigation bar divider color to use for Trusted Web Activity (note: in Chrome this is supported
      * from version 86).
      */
     private static final String METADATA_NAVIGATION_BAR_DIVIDER_COLOR_DARK_ID =
-            "androix.browser.trusted.NAVIGATION_BAR_DIVIDER_COLOR_DARK";
+            "androidx.browser.trusted.NAVIGATION_BAR_DIVIDER_COLOR_DARK";
 
     /**
      * Id of the Drawable to use as a splash screen.
