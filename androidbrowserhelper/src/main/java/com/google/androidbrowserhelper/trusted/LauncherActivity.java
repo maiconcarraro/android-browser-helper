@@ -16,6 +16,7 @@ package com.google.androidbrowserhelper.trusted;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Bundle;
@@ -27,6 +28,7 @@ import androidx.annotation.Nullable;
 import androidx.browser.customtabs.CustomTabColorSchemeParams;
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsIntent;
+import androidx.browser.trusted.ScreenOrientation;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode;
 import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
 import androidx.browser.trusted.TrustedWebActivityService;
@@ -210,7 +212,7 @@ public class LauncherActivity extends Activity {
                         .setColorSchemeParams(
                                 CustomTabsIntent.COLOR_SCHEME_DARK, darkModeColorScheme)
                         .setDisplayMode(getDisplayMode())
-                        .setScreenOrientation(mMetadata.screenOrientation);
+                        .setScreenOrientation(getOrientation());
 
         if (mMetadata.additionalTrustedOrigins != null) {
             twaBuilder.setAdditionalTrustedOrigins(mMetadata.additionalTrustedOrigins);
@@ -248,6 +250,14 @@ public class LauncherActivity extends Activity {
 
     protected TwaLauncher createTwaLauncher() {
         return new TwaLauncher(this);
+    }
+
+    /**
+     * Determines if the device is a tablet based on screen size
+     */
+    private boolean isTablet() {
+        Configuration config = getResources().getConfiguration();
+        return (config.screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE;
     }
 
     private boolean splashScreenNeeded() {
@@ -374,6 +384,20 @@ public class LauncherActivity extends Activity {
             return TwaLauncher.WEBVIEW_FALLBACK_STRATEGY;
         }
         return TwaLauncher.CCT_FALLBACK_STRATEGY;
+    }
+
+    /**
+     * Returns the screen orientation the Trusted Web Activity should be launched with. Defaults to
+     * portrait mode for phones and any orientation for tablets.
+     *
+     * Override this for starting the Trusted Web Activity with a different orientation.
+     */
+    protected int getOrientation() {
+        if (isTablet()) {
+            return ScreenOrientation.ANY;
+        }
+
+        return ScreenOrientation.PORTRAIT;
     }
 
     /**
