@@ -256,8 +256,7 @@ public class LauncherActivity extends Activity {
      * Determines if the device is a tablet based on screen size
      */
     private boolean isTablet() {
-        Configuration config = getResources().getConfiguration();
-        return (config.screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE;
+        return getResources().getConfiguration().smallestScreenWidthDp >= 600;
     }
 
     private boolean splashScreenNeeded() {
@@ -394,7 +393,7 @@ public class LauncherActivity extends Activity {
      */
     protected int getOrientation() {
         if (isTablet()) {
-            return ScreenOrientation.ANY;
+            return ScreenOrientation.DEFAULT;
         }
 
         return ScreenOrientation.PORTRAIT;
