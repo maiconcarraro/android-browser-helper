@@ -330,6 +330,15 @@ public class TwaLauncher {
     }
 
     /**
+     * Returns the CustomTabs session used by this TwaLauncher.
+     * @return CustomTabsSession instance or null if not yet established
+     */
+    @Nullable
+    public CustomTabsSession getSession() {
+        return mSession;
+    }
+
+    /**
      * Sets the timestamp (in SystemClock.uptimeMillis()) when the TWA launcher
      * activity was created. This timestamp is used to report the full startup
      * duration to the browser.

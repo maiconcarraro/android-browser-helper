@@ -26,9 +26,11 @@ import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.browser.customtabs.CustomTabColorSchemeParams;
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsIntent;
+import androidx.browser.customtabs.CustomTabsSession;
 import androidx.browser.trusted.FileHandlingData;
 import androidx.browser.trusted.ScreenOrientation;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode;
@@ -103,7 +105,7 @@ import java.util.Map;
  * [2] https://www.chromium.org/developers/how-tos/run-chromium-with-flags#TOC-Setting-Flags-for-Chrome-on-Android
  * [3] https://developer.android.com/reference/android/support/v4/content/FileProvider
  */
-public class LauncherActivity extends Activity {
+public class LauncherActivity extends AppCompatActivity {
     private static final String TAG = "TWALauncherActivity";
 
     private static final String BROWSER_WAS_LAUNCHED_KEY =
@@ -248,6 +250,9 @@ public class LauncherActivity extends Activity {
                 () -> { mBrowserWasLaunched = true; finish();},
                 getFallbackStrategy());
 
+        // Allow subclasses to perform custom setup after TWA is launched
+        onTwaLaunched();
+
         if (!sChromeVersionChecked) {
             ChromeUpdatePrompt.promptIfNeeded(this, mTwaLauncher.getProviderPackage());
             sChromeVersionChecked = true;
@@ -272,6 +277,22 @@ public class LauncherActivity extends Activity {
     protected TwaLauncher createTwaLauncher() {
         return new TwaLauncher(this, null, SessionStore.makeSessionId(getTaskId()),
                 new SharedPreferencesTokenStore(this));
+    }
+    
+    /**
+     * Override this method to perform custom setup after TWA is launched.
+     * This allows subclasses to inject PostMessage functionality.
+     */
+    protected void onTwaLaunched() {
+        // Default implementation does nothing
+    }
+    
+    /**
+     * Get access to the TwaLauncher instance for advanced customization.
+     * @return TwaLauncher instance or null if not yet created
+     */
+    protected TwaLauncher getTwaLauncher() {
+        return mTwaLauncher;
     }
 
     /**
