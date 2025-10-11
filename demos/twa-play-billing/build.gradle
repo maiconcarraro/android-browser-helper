@@ -14,7 +14,9 @@
  *    limitations under the License.
  */
 
-apply plugin: 'com.android.application'
+plugins {
+    id 'com.android.application'
+}
 
 // Switch these around for a build to upload to the Play Store.
 def appId = "com.google.androidbrowserhelper.demos.playbilling"
@@ -22,23 +24,25 @@ def appId = "com.google.androidbrowserhelper.demos.playbilling"
 
 android {
     namespace "com.google.androidbrowserhelper.demos.playbilling"
-    compileSdkVersion 31
+
     defaultConfig {
         applicationId appId
-        minSdkVersion 21
+        minSdkVersion 23
+        compileSdk 36
         targetSdkVersion 31
         versionCode 13
         versionName "13.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
-        sourceCompatibility = 1.8
-        targetCompatibility = 1.8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 }
 
 dependencies {
-    api 'androidx.browser:browser:1.4.0'
+    api libs.androidx.browser
+    implementation(platform(libs.kotlin.bom))
     debugImplementation project(path: ':androidbrowserhelper')
     debugImplementation project(path: ':playbilling')
 
