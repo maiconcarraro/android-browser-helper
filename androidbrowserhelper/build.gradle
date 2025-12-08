@@ -63,28 +63,28 @@ android {
 
 dependencies {
     // Force newest versions of kotlin and coroutines to avoid duplicate classes in kotlin-stdlib
-    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.8.22"))
-    implementation(platform("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.7.3"))
+    implementation(platform(libs.kotlin.bom))
+    implementation(platform(libs.kotlin.coroutines.bom))
 
-    api "androidx.browser:browser:1.10.0-alpha02"
+    api libs.androidx.browser
 
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 
-    implementation "androidx.annotation:annotation:1.9.1"
-    implementation "androidx.core:core:1.17.0"
-    implementation "androidx.appcompat:appcompat:1.7.1"
-    implementation "com.google.guava:guava:33.5.0-android"
+    implementation libs.androidx.annotation
+    implementation libs.androidx.core
+    implementation libs.androidx.appcompat
+    implementation libs.guava
 
-    testImplementation "junit:junit:4.13.2"
-    testImplementation "org.mockito:mockito-core:5.20.0"
-    testImplementation "org.robolectric:robolectric:4.16"
+    testImplementation libs.junit
+    testImplementation libs.mockito.core
+    testImplementation libs.robolectric
 
-    androidTestImplementation "androidx.test:runner:1.7.0"
-    androidTestImplementation "androidx.test:rules:1.7.0"
-    androidTestImplementation "androidx.test.ext:junit:1.3.0"
-    androidTestImplementation "org.mockito:mockito-core:5.20.0"
-    androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito:2.28.6"
-    androidTestImplementation "junit:junit:4.13.2"
+    androidTestImplementation libs.androidx.runner
+    androidTestImplementation libs.androidx.rules
+    androidTestImplementation libs.androidx.ext.junit
+    androidTestImplementation libs.mockito.core
+    androidTestImplementation libs.dexmaker.mockito
+    androidTestImplementation libs.junit
 }
 
 publishing {
