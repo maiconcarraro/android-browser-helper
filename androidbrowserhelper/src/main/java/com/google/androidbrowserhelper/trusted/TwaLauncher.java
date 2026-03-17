@@ -21,6 +21,8 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import java.util.List;
@@ -48,6 +50,8 @@ import com.google.androidbrowserhelper.BuildConfig;
  */
 public class TwaLauncher {
     private static final String TAG = "TwaLauncher";
+
+    private static final long BIND_RETRY_DELAY_MS = 1500;
 
     private static final int DEFAULT_SESSION_ID = 96375;
 
@@ -108,6 +112,8 @@ public class TwaLauncher {
     private TokenStore mTokenStore;
 
     private boolean mDestroyed;
+
+    private boolean mServiceBound;
 
     private long mStartupUptimeMillis;
 
@@ -287,8 +293,29 @@ public class TwaLauncher {
             serviceIntent.setComponent(
                     new ComponentName(ri.serviceInfo.packageName, ri.serviceInfo.name));
         }
-        mContext.bindService(serviceIntent, mServiceConnection,
+        mServiceBound = mContext.bindService(serviceIntent, mServiceConnection,
                 Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
+        if (!mServiceBound) {
+            // Service binding failed — browser may be sleeping, disabled, or unavailable.
+            // On Samsung OneUI 5.1, aggressive battery management can put Chrome in a
+            // state where its Custom Tabs service is temporarily unbindable.
+            // Retry once after a delay to give the system time to wake the service.
+            Log.w(TAG, "bindService returned false for " + mProviderPackage + ", retrying...");
+            mServiceConnection = null;
+            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+                if (mDestroyed) return;
+                mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
+                mServiceConnection.setSessionCreationRunnables(
+                        onSessionCreatedRunnable, onSessionCreationFailedRunnable);
+                mServiceBound = mContext.bindService(serviceIntent, mServiceConnection,
+                        Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
+                if (!mServiceBound) {
+                    Log.w(TAG, "bindService retry also failed for " + mProviderPackage);
+                    mServiceConnection = null;
+                    onSessionCreationFailedRunnable.run();
+                }
+            }, BIND_RETRY_DELAY_MS);
+        }
     }
 
     private void launchWhenSessionEstablished(TrustedWebActivityIntentBuilder twaBuilder,
@@ -349,9 +376,15 @@ public class TwaLauncher {
         if (mDestroyed) {
             return;
         }
-        if (mServiceConnection != null) {
-            mContext.unbindService(mServiceConnection);
+        if (mServiceConnection != null && mServiceBound) {
+            try {
+                mContext.unbindService(mServiceConnection);
+            } catch (IllegalArgumentException e) {
+                Log.w(TAG, "unbindService failed", e);
+            }
         }
+        mServiceConnection = null;
+        mServiceBound = false;
         mContext = null;
         mDestroyed = true;
     }
