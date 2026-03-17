@@ -35,7 +35,6 @@ android {
 
         buildConfigField "int", "LIBRARY_VERSION", "${VERSION_CODE}"
 
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -54,11 +53,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_1_8
     }
 
-    testOptions {
-        unitTests {
-            includeAndroidResources = true
-        }
-    }
 }
 
 dependencies {
@@ -75,16 +69,6 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.guava
 
-    testImplementation libs.junit
-    testImplementation libs.mockito.core
-    testImplementation libs.robolectric
-
-    androidTestImplementation libs.androidx.runner
-    androidTestImplementation libs.androidx.rules
-    androidTestImplementation libs.androidx.ext.junit
-    androidTestImplementation libs.mockito.core
-    androidTestImplementation libs.dexmaker.mockito
-    androidTestImplementation libs.junit
 }
 
 publishing {
