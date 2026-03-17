@@ -278,6 +278,9 @@ public class TwaLauncher {
         if (mServiceConnection == null) {
             mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
         }
+        // Must set application context before bindService — bypassing CustomTabsClient
+        // means this isn't done automatically, and the connection will crash without it.
+        mServiceConnection.setApplicationContext(mContext.getApplicationContext());
 
         mServiceConnection.setSessionCreationRunnables(
                 onSessionCreatedRunnable, onSessionCreationFailedRunnable);
@@ -305,6 +308,7 @@ public class TwaLauncher {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (mDestroyed) return;
                 mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
+                mServiceConnection.setApplicationContext(mContext.getApplicationContext());
                 mServiceConnection.setSessionCreationRunnables(
                         onSessionCreatedRunnable, onSessionCreationFailedRunnable);
                 mServiceBound = mContext.bindService(serviceIntent, mServiceConnection,
