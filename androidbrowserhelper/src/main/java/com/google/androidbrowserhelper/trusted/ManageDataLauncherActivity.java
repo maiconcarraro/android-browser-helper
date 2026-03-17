@@ -252,7 +252,12 @@ public class ManageDataLauncherActivity extends Activity {
         public void onCustomTabsServiceConnected(ComponentName componentName,
                 CustomTabsClient client) {
             if (!isFinishing()) {
-                launchSettings(client.newSession(null));
+                CustomTabsSession session = client.newSession(null);
+                if (session == null) {
+                    handleNoSupportForManageSpace();
+                    return;
+                }
+                launchSettings(session);
             }
         }
 

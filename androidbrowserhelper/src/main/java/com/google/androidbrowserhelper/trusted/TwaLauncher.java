@@ -14,6 +14,7 @@
 
 package com.google.androidbrowserhelper.trusted;
 
+import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -68,7 +69,11 @@ public class TwaLauncher {
             // Work around as ARC++ does not support native TWAs at the moment.
             intent.intent.putExtra(TrustedWebUtils.EXTRA_LAUNCH_AS_TRUSTED_WEB_ACTIVITY, true);
         }
-        intent.launchUrl(context, twaBuilder.getUri());
+        try {
+            intent.launchUrl(context, twaBuilder.getUri());
+        } catch (ActivityNotFoundException e) {
+            Log.e(TAG, "No browser available for fallback", e);
+        }
         if (completionCallback != null) {
             completionCallback.run();
         }
