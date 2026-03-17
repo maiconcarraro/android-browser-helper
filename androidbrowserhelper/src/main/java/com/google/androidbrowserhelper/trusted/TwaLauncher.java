@@ -17,8 +17,12 @@ package com.google.androidbrowserhelper.trusted;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.util.Log;
+
+import java.util.List;
 
 import com.google.androidbrowserhelper.trusted.splashscreens.SplashScreenStrategy;
 
@@ -266,8 +270,20 @@ public class TwaLauncher {
 
         mServiceConnection.setSessionCreationRunnables(
                 onSessionCreatedRunnable, onSessionCreationFailedRunnable);
-        CustomTabsClient.bindCustomTabsServicePreservePriority(
-                mContext, mProviderPackage, mServiceConnection);
+
+        // Resolve the Custom Tabs service to a specific ComponentName before binding.
+        // On devices with dual/cloned app features (e.g. Xiaomi MIUI/HyperOS), using
+        // only the package name can cause a disambiguation dialog between the primary
+        // and cloned browser instances. Resolving to the exact component avoids this.
+        Intent serviceIntent = new Intent(CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION);
+        serviceIntent.setPackage(mProviderPackage);
+        ResolveInfo ri = mContext.getPackageManager().resolveService(serviceIntent, 0);
+        if (ri != null && ri.serviceInfo != null) {
+            serviceIntent.setComponent(
+                    new ComponentName(ri.serviceInfo.packageName, ri.serviceInfo.name));
+        }
+        mContext.bindService(serviceIntent, mServiceConnection,
+                Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
     }
 
     private void launchWhenSessionEstablished(TrustedWebActivityIntentBuilder twaBuilder,
@@ -294,6 +310,20 @@ public class TwaLauncher {
         }
         Log.d(TAG, "Launching Trusted Web Activity.");
         TrustedWebActivityIntent intent = builder.build(mSession);
+        // Resolve the exact activity ComponentName to avoid dual-app disambiguation
+        // (e.g. Xiaomi MIUI/HyperOS cloned Chrome instances with same package name)
+        if (mProviderPackage != null) {
+            Intent baseIntent = intent.getIntent();
+            PackageManager pm = mContext.getPackageManager();
+            List<ResolveInfo> activities = pm.queryIntentActivities(baseIntent, 0);
+            for (ResolveInfo ri : activities) {
+                if (ri.activityInfo.packageName.equals(mProviderPackage)) {
+                    baseIntent.setComponent(new ComponentName(
+                            ri.activityInfo.packageName, ri.activityInfo.name));
+                    break;
+                }
+            }
+        }
         if (mStartupUptimeMillis != 0) {
             intent.getIntent().putExtra(EXTRA_STARTUP_UPTIME_MILLIS, mStartupUptimeMillis);
         }
