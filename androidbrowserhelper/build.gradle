@@ -31,7 +31,6 @@ android {
     defaultConfig {
         minSdkVersion 23
         compileSdk 36
-        targetSdkVersion 31
 
         buildConfigField "int", "LIBRARY_VERSION", "${VERSION_CODE}"
 
@@ -51,6 +50,12 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+    }
+    lint {
+        targetSdk 31
+    }
+    testOptions {
+        targetSdk 31
     }
 
 }
