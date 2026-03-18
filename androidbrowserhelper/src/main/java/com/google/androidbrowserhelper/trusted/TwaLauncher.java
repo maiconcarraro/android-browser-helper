@@ -18,14 +18,10 @@ import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
-
-import java.util.List;
 
 import com.google.androidbrowserhelper.trusted.splashscreens.SplashScreenStrategy;
 
@@ -35,6 +31,7 @@ import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsService;
 import androidx.browser.customtabs.CustomTabsServiceConnection;
+import androidx.browser.customtabs.CustomTabsServiceHelper;
 import androidx.browser.customtabs.CustomTabsSession;
 import androidx.browser.customtabs.TrustedWebUtils;
 import androidx.browser.trusted.Token;
@@ -278,26 +275,14 @@ public class TwaLauncher {
         if (mServiceConnection == null) {
             mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
         }
-        // Must set application context before bindService — bypassing CustomTabsClient
-        // means this isn't done automatically, and the connection will crash without it.
-        mServiceConnection.setApplicationContext(mContext.getApplicationContext());
 
         mServiceConnection.setSessionCreationRunnables(
                 onSessionCreatedRunnable, onSessionCreationFailedRunnable);
 
-        // Resolve the Custom Tabs service to a specific ComponentName before binding.
-        // On devices with dual/cloned app features (e.g. Xiaomi MIUI/HyperOS), using
-        // only the package name can cause a disambiguation dialog between the primary
-        // and cloned browser instances. Resolving to the exact component avoids this.
         Intent serviceIntent = new Intent(CustomTabsService.ACTION_CUSTOM_TABS_CONNECTION);
         serviceIntent.setPackage(mProviderPackage);
-        ResolveInfo ri = mContext.getPackageManager().resolveService(serviceIntent, 0);
-        if (ri != null && ri.serviceInfo != null) {
-            serviceIntent.setComponent(
-                    new ComponentName(ri.serviceInfo.packageName, ri.serviceInfo.name));
-        }
-        mServiceBound = mContext.bindService(serviceIntent, mServiceConnection,
-                Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
+        mServiceBound = CustomTabsServiceHelper.bindService(mContext, serviceIntent,
+                mServiceConnection, Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
         if (!mServiceBound) {
             // Service binding failed — browser may be sleeping, disabled, or unavailable.
             // On Samsung OneUI 5.1, aggressive battery management can put Chrome in a
@@ -308,11 +293,10 @@ public class TwaLauncher {
             new Handler(Looper.getMainLooper()).postDelayed(() -> {
                 if (mDestroyed) return;
                 mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
-                mServiceConnection.setApplicationContext(mContext.getApplicationContext());
                 mServiceConnection.setSessionCreationRunnables(
                         onSessionCreatedRunnable, onSessionCreationFailedRunnable);
-                mServiceBound = mContext.bindService(serviceIntent, mServiceConnection,
-                        Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
+                mServiceBound = CustomTabsServiceHelper.bindService(mContext, serviceIntent,
+                        mServiceConnection, Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
                 if (!mServiceBound) {
                     Log.w(TAG, "bindService retry also failed for " + mProviderPackage);
                     mServiceConnection = null;
@@ -346,20 +330,6 @@ public class TwaLauncher {
         }
         Log.d(TAG, "Launching Trusted Web Activity.");
         TrustedWebActivityIntent intent = builder.build(mSession);
-        // Resolve the exact activity ComponentName to avoid dual-app disambiguation
-        // (e.g. Xiaomi MIUI/HyperOS cloned Chrome instances with same package name)
-        if (mProviderPackage != null) {
-            Intent baseIntent = intent.getIntent();
-            PackageManager pm = mContext.getPackageManager();
-            List<ResolveInfo> activities = pm.queryIntentActivities(baseIntent, 0);
-            for (ResolveInfo ri : activities) {
-                if (ri.activityInfo.packageName.equals(mProviderPackage)) {
-                    baseIntent.setComponent(new ComponentName(
-                            ri.activityInfo.packageName, ri.activityInfo.name));
-                    break;
-                }
-            }
-        }
         if (mStartupUptimeMillis != 0) {
             intent.getIntent().putExtra(EXTRA_STARTUP_UPTIME_MILLIS, mStartupUptimeMillis);
         }
