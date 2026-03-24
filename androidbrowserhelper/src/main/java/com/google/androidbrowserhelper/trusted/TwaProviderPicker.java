@@ -73,10 +73,6 @@ public class TwaProviderPicker {
         "com.google.android.apps.chrome", // CHROME_LOCAL_BUILD
         "org.chromium.chrome", // CHROMIUM_LOCAL_BUILD
         "com.microsoft.emmx", // MICROSOFT_EDGE
-        "com.opera.browser", // OPERA
-        "com.opera.browser.beta", // OPERA_BETA
-        "com.opera.mini.native", // OPERA_MINI
-        "com.opera.mini.native.beta" // OPERA_MINI_BETA
     };
 
     @IntDef({LaunchMode.TRUSTED_WEB_ACTIVITY, LaunchMode.CUSTOM_TAB, LaunchMode.BROWSER})
