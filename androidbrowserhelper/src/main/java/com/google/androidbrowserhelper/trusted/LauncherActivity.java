@@ -25,6 +25,7 @@ import android.util.Log;
 import android.view.WindowManager;
 import android.widget.ImageView;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -177,7 +178,7 @@ public class LauncherActivity extends AppCompatActivity {
         if (splashScreenNeeded()) {
             mSplashScreenStrategy = new PwaWrapperSplashScreenStrategy(this,
                     mMetadata.splashImageDrawableId,
-                    getColorCompat(mMetadata.splashScreenBackgroundColorId),
+                    getSplashScreenBackgroundColor(),
                     getSplashImageScaleType(),
                     getSplashImageTransformationMatrix(),
                     mMetadata.splashScreenFadeOutDurationMillis,
@@ -380,8 +381,17 @@ public class LauncherActivity extends AppCompatActivity {
         return null;
     }
 
-    private int getColorCompat(int splashScreenBackgroundColorId) {
-        return ContextCompat.getColor(this, splashScreenBackgroundColorId);
+    /**
+     * Override to provide a dynamic splash screen background color.
+     * Defaults to the color specified in AndroidManifest metadata.
+     */
+    @ColorInt
+    protected int getSplashScreenBackgroundColor() {
+        return ContextCompat.getColor(this, mMetadata.splashScreenBackgroundColorId);
+    }
+
+    private int getColorCompat(int colorId) {
+        return ContextCompat.getColor(this, colorId);
     }
 
     @Override
