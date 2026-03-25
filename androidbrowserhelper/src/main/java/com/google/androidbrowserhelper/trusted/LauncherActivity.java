@@ -216,7 +216,7 @@ public class LauncherActivity extends AppCompatActivity {
 
         CustomTabColorSchemeParams darkModeColorScheme = new CustomTabColorSchemeParams.Builder()
                 .setToolbarColor(getColorCompat(mMetadata.statusBarColorDarkId))
-                .setNavigationBarColor(getColorCompat(mMetadata.navigationBarColorDarkId))
+                .setNavigationBarColor(getNavigationBarColorDark())
                 .setNavigationBarDividerColor(
                         getColorCompat(mMetadata.navigationBarDividerColorDarkId))
                 .build();
@@ -225,7 +225,7 @@ public class LauncherActivity extends AppCompatActivity {
         TrustedWebActivityIntentBuilder twaBuilder =
                 new TrustedWebActivityIntentBuilder(launchUrl)
                         .setToolbarColor(getColorCompat(mMetadata.statusBarColorId))
-                        .setNavigationBarColor(getColorCompat(mMetadata.navigationBarColorId))
+                        .setNavigationBarColor(getNavigationBarColor())
                         .setNavigationBarDividerColor(
                                 getColorCompat(mMetadata.navigationBarDividerColorId))
                         .setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
@@ -388,6 +388,24 @@ public class LauncherActivity extends AppCompatActivity {
     @ColorInt
     protected int getSplashScreenBackgroundColor() {
         return ContextCompat.getColor(this, mMetadata.splashScreenBackgroundColorId);
+    }
+
+    /**
+     * Override to provide a dynamic navigation bar color (light scheme).
+     * Defaults to the color specified in AndroidManifest metadata.
+     */
+    @ColorInt
+    protected int getNavigationBarColor() {
+        return ContextCompat.getColor(this, mMetadata.navigationBarColorId);
+    }
+
+    /**
+     * Override to provide a dynamic navigation bar color (dark scheme).
+     * Defaults to the color specified in AndroidManifest metadata.
+     */
+    @ColorInt
+    protected int getNavigationBarColorDark() {
+        return ContextCompat.getColor(this, mMetadata.navigationBarColorDarkId);
     }
 
     private int getColorCompat(int colorId) {
