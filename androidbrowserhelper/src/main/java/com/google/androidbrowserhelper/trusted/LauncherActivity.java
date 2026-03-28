@@ -214,6 +214,13 @@ public class LauncherActivity extends AppCompatActivity {
             return;
         }
 
+        // mMetadata may be null if onCreate() returned early (e.g. process restored with
+        // BROWSER_WAS_LAUNCHED_KEY=true, or finish() was suppressed by a subclass). Initialize
+        // lazily so launchTwa() is always safe to call from onNewIntent().
+        if (mMetadata == null) {
+            mMetadata = LauncherActivityMetadata.parse(this);
+        }
+
         CustomTabColorSchemeParams darkModeColorScheme = new CustomTabColorSchemeParams.Builder()
                 .setToolbarColor(getColorCompat(mMetadata.statusBarColorDarkId))
                 .setNavigationBarColor(getNavigationBarColorDark())
