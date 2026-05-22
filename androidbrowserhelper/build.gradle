@@ -27,10 +27,10 @@ def VERSION_CODE = 7;
 
 android {
     namespace "com.google.androidbrowserhelper"
+    compileSdk = 37
 
     defaultConfig {
         minSdkVersion 23
-        compileSdk 36
 
         buildConfigField "int", "LIBRARY_VERSION", "${VERSION_CODE}"
 
