@@ -22,6 +22,8 @@ import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.ViewGroup;
@@ -57,6 +59,13 @@ public class PwaWrapperSplashScreenStrategy implements SplashScreenStrategy {
 
     private static final String TAG = "SplashScreenStrategy";
 
+    /**
+     * Maximum time (ms) to wait for {@link Activity#onEnterAnimationComplete} before
+     * launching the TWA anyway. On some OEM devices this callback is never invoked,
+     * which would otherwise cause an infinite hang on the splash screen.
+     */
+    private static final long ENTER_ANIMATION_TIMEOUT_MS = 2000;
+
     private static SystemBarColorPredictor sSystemBarColorPredictor = new SystemBarColorPredictor();
 
     private final Activity mActivity;
@@ -86,6 +95,9 @@ public class PwaWrapperSplashScreenStrategy implements SplashScreenStrategy {
 
     @Nullable
     private Runnable mOnEnterAnimationCompleteRunnable;
+
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+    private final Runnable mEnterAnimationTimeoutRunnable = this::onEnterAnimationTimeout;
 
     private boolean mStartChromeBeforeAnimationComplete;
 
@@ -232,8 +244,20 @@ public class PwaWrapperSplashScreenStrategy implements SplashScreenStrategy {
             runnable.run();
         } else {
             mOnEnterAnimationCompleteRunnable = runnable;
+            // Guard against OEM devices where onEnterAnimationComplete is never called.
+            mHandler.postDelayed(mEnterAnimationTimeoutRunnable, ENTER_ANIMATION_TIMEOUT_MS);
             boolean preloadResult = session.mayLaunchUrl(uri, null, null);
             Log.i(TAG, "Enter animation not complete, try preload url. Result: " + preloadResult);
+        }
+    }
+
+    private void onEnterAnimationTimeout() {
+        Log.w(TAG, "Enter animation did not complete within " + ENTER_ANIMATION_TIMEOUT_MS
+                + "ms, launching TWA without waiting");
+        if (mOnEnterAnimationCompleteRunnable != null) {
+            Runnable r = mOnEnterAnimationCompleteRunnable;
+            mOnEnterAnimationCompleteRunnable = null;
+            r.run();
         }
     }
 
@@ -258,6 +282,7 @@ public class PwaWrapperSplashScreenStrategy implements SplashScreenStrategy {
      */
     public void onActivityEnterAnimationComplete() {
         mEnterAnimationComplete = true;
+        mHandler.removeCallbacks(mEnterAnimationTimeoutRunnable);
         if (mOnEnterAnimationCompleteRunnable != null) {
             mOnEnterAnimationCompleteRunnable.run();
             mOnEnterAnimationCompleteRunnable = null;
@@ -268,6 +293,7 @@ public class PwaWrapperSplashScreenStrategy implements SplashScreenStrategy {
      * Performs clean-up.
      */
     public void destroy() {
+        mHandler.removeCallbacks(mEnterAnimationTimeoutRunnable);
         if (mSplashImageTransferTask != null) {
             mSplashImageTransferTask.cancel();
         }

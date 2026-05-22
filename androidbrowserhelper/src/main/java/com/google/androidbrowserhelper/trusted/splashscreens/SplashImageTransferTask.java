@@ -20,11 +20,20 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.os.AsyncTask;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import androidx.annotation.Nullable;
 import androidx.browser.customtabs.CustomTabsSession;
@@ -37,6 +46,13 @@ import androidx.core.content.FileProvider;
 public class SplashImageTransferTask {
 
     private static final String TAG = "SplashImageTransferTask";
+
+    /**
+     * Maximum time (in milliseconds) to wait for the splash image file transfer to Chrome.
+     * If receiveFile() blocks (e.g. Chrome is hibernating / unresponsive), we time out and
+     * launch the TWA without the splash screen rather than hanging forever.
+     */
+    private static final long TRANSFER_TIMEOUT_MS = 3000;
 
     private static final String FOLDER_NAME = "twa_splash";
     private static final String FILE_NAME = "splash_image.png";
@@ -108,7 +124,7 @@ public class SplashImageTransferTask {
             if (file.exists() && lastUpdateTime == prefs.getLong(PREF_LAST_UPDATE_TIME, 0)) {
                 // Don't overwrite existing file, if it was saved later than the last time app was
                 // updated
-                return transferToCustomTabsProvider(file);
+                return transferWithTimeout(file);
             }
             try(OutputStream os = new FileOutputStream(file)) {
                 if (isCancelled()) return false;
@@ -117,9 +133,39 @@ public class SplashImageTransferTask {
                 prefs.edit().putLong(PREF_LAST_UPDATE_TIME, lastUpdateTime).commit();
 
                 if (isCancelled()) return false;
-                return transferToCustomTabsProvider(file);
+                return transferWithTimeout(file);
             } catch (Exception e) {
                 throw new RuntimeException(e);
+            }
+        }
+
+        /**
+         * Transfers the splash image file to Chrome with a timeout.
+         * {@code receiveFile()} is a synchronous Binder call that can block indefinitely
+         * if Chrome's Custom Tabs service is unresponsive (hibernation, crash, etc.).
+         * Running it on a separate thread with a timeout prevents the TWA from hanging
+         * forever on the splash screen.
+         */
+        private Boolean transferWithTimeout(File file) {
+            ExecutorService executor = Executors.newSingleThreadExecutor();
+            Future<Boolean> future = executor.submit(new Callable<Boolean>() {
+                @Override
+                public Boolean call() {
+                    return transferToCustomTabsProvider(file);
+                }
+            });
+            try {
+                return future.get(TRANSFER_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            } catch (TimeoutException e) {
+                Log.w(TAG, "Splash image transfer timed out after " + TRANSFER_TIMEOUT_MS
+                        + "ms — Chrome may be unresponsive");
+                future.cancel(true);
+                return false;
+            } catch (InterruptedException | ExecutionException e) {
+                Log.w(TAG, "Splash image transfer failed", e);
+                return false;
+            } finally {
+                executor.shutdownNow();
             }
         }
 
