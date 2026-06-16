@@ -28,6 +28,7 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.Nullable;
@@ -110,6 +111,18 @@ public class TwaProviderPicker {
      * supports.
      */
     public static Action pickProvider(PackageManager pm) {
+        return pickProvider(pm, null);
+    }
+
+    /**
+     * Same as {@link #pickProvider(PackageManager)}, but ignores the given packages. Used to find
+     * an alternative browser when the preferred one is installed but couldn't be reached (e.g.
+     * Chrome in Samsung deep sleep). When the preferred browser is excluded, selection naturally
+     * falls back to the user's default browser, even if it isn't in the preferred providers list.
+     *
+     * @param excludePackages Browser packages to skip, or {@code null} to consider all of them.
+     */
+    public static Action pickProvider(PackageManager pm, @Nullable Set<String> excludePackages) {
         // Setting the Intent Data as seen at
         // https://cs.android.com/android/platform/superproject/+/fd994cf9ef8207ad03dc3a1d831e9263ddfd4469:packages/apps/PermissionController/src/com/android/packageinstaller/role/model/BrowserRoleBehavior.java
         Intent queryBrowsersIntent = new Intent()
@@ -152,6 +165,9 @@ public class TwaProviderPicker {
 
         // Loop preferred providers to use as preference order
         for (String preferredProvider : preferredProviders) {
+            if (excludePackages != null && excludePackages.contains(preferredProvider)) {
+                continue;
+            }
             for (ResolveInfo possibleProvider : possibleProviders) {
                 String providerName = possibleProvider.activityInfo.packageName;
 
@@ -174,6 +190,10 @@ public class TwaProviderPicker {
 
         for (ResolveInfo possibleProvider : possibleProviders) {
             String providerName = possibleProvider.activityInfo.packageName;
+
+            if (excludePackages != null && excludePackages.contains(providerName)) {
+                continue;
+            }
 
             if (!preferredProviderName.isEmpty() && !providerName.equals(preferredProviderName)) {
                 continue;

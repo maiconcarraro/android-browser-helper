@@ -15,7 +15,9 @@
 package com.google.androidbrowserhelper.trusted;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Matrix;
 import android.net.Uri;
@@ -48,8 +50,10 @@ import com.google.androidbrowserhelper.trusted.splashscreens.PwaWrapperSplashScr
 import org.json.JSONException;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A convenience class to make using Trusted Web Activities easier. You can extend this class for
@@ -132,6 +136,17 @@ public class LauncherActivity extends AppCompatActivity {
     private TwaLauncher mTwaLauncher;
 
     private long mStartupUptimeMillis;
+
+    /**
+     * When set, forces {@link #createTwaLauncher()} to use this browser instead of the one from
+     * metadata / auto-pick. Used to relaunch in an alternative browser when the originally chosen
+     * one couldn't be reached (e.g. Samsung deep sleep).
+     */
+    @Nullable
+    private String mForcedProvider;
+
+    /** Browser packages that failed to launch, so the fallback doesn't retry them in a loop. */
+    private final Set<String> mUnavailableProviders = new HashSet<>();
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -290,7 +305,8 @@ public class LauncherActivity extends AppCompatActivity {
     }
 
     protected TwaLauncher createTwaLauncher() {
-        return new TwaLauncher(this, mMetadata.launchingBrowser, SessionStore.makeSessionId(getTaskId()),
+        String provider = mForcedProvider != null ? mForcedProvider : mMetadata.launchingBrowser;
+        return new TwaLauncher(this, provider, SessionStore.makeSessionId(getTaskId()),
                 new SharedPreferencesTokenStore(this));
     }
     
@@ -539,13 +555,114 @@ public class LauncherActivity extends AppCompatActivity {
      * fallback implementation ot starting a native Activity.
      */
     protected TwaLauncher.FallbackStrategy getFallbackStrategy() {
+        return (context, twaBuilder, failedProvider, completionCallback) -> {
+            // When the app isn't locked to a specific browser, the chosen provider was auto-picked
+            // (typically Chrome). If it couldn't be reached (e.g. Samsung deep sleep), try to
+            // relaunch in an alternative installed browser — usually the user's default — instead
+            // of giving up. The PostMessage session won't carry over to the new browser, but the
+            // user still reaches the app.
+            if (mMetadata.launchingBrowser == null) {
+                if (failedProvider != null) {
+                    mUnavailableProviders.add(failedProvider);
+                }
+                TwaProviderPicker.Action alternative =
+                        TwaProviderPicker.pickProvider(getPackageManager(), mUnavailableProviders);
+                if (alternative.provider != null) {
+                    Log.w(TAG, "Browser " + failedProvider + " unavailable; relaunching in "
+                            + alternative.provider);
+                    relaunchInAlternativeBrowser(alternative, twaBuilder, completionCallback);
+                    return;
+                }
+            }
+            runTerminalFallback(context, twaBuilder, failedProvider, completionCallback);
+        };
+    }
+
+    /**
+     * Relaunches the web app in an alternative browser chosen by {@link TwaProviderPicker}. When the
+     * browser supports Custom Tabs / Trusted Web Activities, a fresh TWA launch is performed (which
+     * recurses through {@link #getFallbackStrategy()} if that browser also fails). Otherwise the URL
+     * is opened directly in the browser.
+     */
+    private void relaunchInAlternativeBrowser(TwaProviderPicker.Action alternative,
+            TrustedWebActivityIntentBuilder twaBuilder, @Nullable Runnable completionCallback) {
+        if (alternative.launchMode == TwaProviderPicker.LaunchMode.BROWSER) {
+            // No Custom Tabs support — just open the URL in that browser.
+            TwaLauncher.CCT_FALLBACK_STRATEGY.launch(this, twaBuilder, alternative.provider,
+                    completionCallback);
+            return;
+        }
+
+        // Drop the splash strategy: it transferred a splash image to the original browser and
+        // would hang / double up when relaunching in a different one. Destroy it first so its
+        // internal Handler runnables (enter-animation timeout, etc.) are cancelled cleanly.
+        if (mSplashScreenStrategy != null) {
+            mSplashScreenStrategy.destroy();
+            mSplashScreenStrategy = null;
+        }
+        if (mTwaLauncher != null) {
+            mTwaLauncher.destroy();
+            mTwaLauncher = null;
+        }
+        mForcedProvider = alternative.provider;
+        launchTwa();
+    }
+
+    /**
+     * Terminal fallback used when no usable browser could launch the web app. For a TWA locked to a
+     * specific browser, shows the retry hook or blocked dialog; otherwise uses the configured
+     * WebView / Custom Tabs fallback.
+     */
+    private void runTerminalFallback(Context context,
+            TrustedWebActivityIntentBuilder twaBuilder, @Nullable String providerPackage,
+            @Nullable Runnable completionCallback) {
         if (mMetadata.launchingBrowser != null) {
-            return TwaLauncher.getBlockedDialogFallbackStrategy(mMetadata.launchingBrowserName);
+            // The TWA is locked to a specific browser. If that browser is installed and
+            // enabled but its Custom Tabs service couldn't be bound (e.g. Samsung deep
+            // sleep / aggressive battery management), the failure is transient and showing
+            // the "browser unavailable" dialog is misleading. Route those cases to
+            // onBrowserTemporarilyUnavailable() instead, and only show the blocked dialog
+            // when the browser is genuinely unavailable (uninstalled or disabled).
+            if (isBrowserInstalledAndEnabled(mMetadata.launchingBrowser)) {
+                onBrowserTemporarilyUnavailable();
+            } else {
+                TwaLauncher.getBlockedDialogFallbackStrategy(mMetadata.launchingBrowserName)
+                        .launch(context, twaBuilder, providerPackage, completionCallback);
+            }
+            return;
         }
         if (FALLBACK_TYPE_WEBVIEW.equalsIgnoreCase(mMetadata.fallbackStrategyType)) {
-            return TwaLauncher.WEBVIEW_FALLBACK_STRATEGY;
+            TwaLauncher.WEBVIEW_FALLBACK_STRATEGY.launch(context, twaBuilder, providerPackage,
+                    completionCallback);
+            return;
         }
-        return TwaLauncher.CCT_FALLBACK_STRATEGY;
+        TwaLauncher.CCT_FALLBACK_STRATEGY.launch(context, twaBuilder, providerPackage,
+                completionCallback);
+    }
+
+    /**
+     * Checks whether the given browser package is installed and enabled on the device.
+     * Returns {@code false} if the package is missing, disabled, or {@code packageName} is null.
+     */
+    private boolean isBrowserInstalledAndEnabled(@Nullable String packageName) {
+        if (packageName == null) return false;
+        try {
+            ApplicationInfo info = getPackageManager().getApplicationInfo(packageName, 0);
+            return info.enabled;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Called when the configured launching browser is installed and enabled but its Custom Tabs
+     * service could not be bound — typically a transient OEM issue such as Samsung deep sleep.
+     * The default implementation falls back to the standard browser-unavailable dialog. Subclasses
+     * can override this to show a retry UI instead of the misleading "unavailable" dialog.
+     */
+    protected void onBrowserTemporarilyUnavailable() {
+        TwaLauncher.getBlockedDialogFallbackStrategy(mMetadata.launchingBrowserName)
+                .launch(this, null, mMetadata.launchingBrowser, null);
     }
     
     /**
