@@ -274,6 +274,16 @@ public class TwaLauncher {
             fallbackStrategy.launch(mContext, twaBuilder, mProviderPackage, completionCallback);
         }
 
+        // The calls above can synchronously invoke a failure/fallback path that destroys this
+        // very instance (e.g. LauncherActivity's alternative-browser fallback calls destroy() on
+        // the failed TwaLauncher before launching a new one in a different browser). This can
+        // happen reentrantly within this same call when bindService() invokes onServiceConnected
+        // synchronously (observed on some OEMs when already connected to the target service).
+        // Bail out instead of touching the now-null mContext.
+        if (mDestroyed) {
+            return;
+        }
+
         // Remember who we connect to as the package that is allowed to delegate notifications
         // to us.
         if (!ChromeOsSupport.isRunningOnArc(mContext.getPackageManager()) && mProviderPackage != null) {
