@@ -238,6 +238,22 @@ public class TwaLauncher {
         if (providerPackage == null) {
             TwaProviderPicker.Action action =
                     TwaProviderPicker.pickProvider(context.getPackageManager());
+            if (action.provider == null) {
+                // PackageManager found no browsers at all (transient Samsung OneUI
+                // intent-resolution bug) and no known browser could be probed directly.
+                // Try the provider that last launched us successfully: service binding is
+                // resolved internally by the system, not by the broken app-side query path,
+                // so launching it may still work. If the provider is gone, the failure
+                // runnable routes into the normal fallback chain.
+                String lastProvider = new TwaSharedPreferencesManager(context)
+                        .readLastLaunchedProviderPackageName();
+                if (lastProvider != null) {
+                    Log.w(TAG, "No browser found via PackageManager; trying last known "
+                            + "provider: " + lastProvider);
+                    action = new TwaProviderPicker.Action(
+                            TwaProviderPicker.LaunchMode.TRUSTED_WEB_ACTIVITY, lastProvider);
+                }
+            }
             mProviderPackage = action.provider;
             mLaunchMode = action.launchMode;
         } else {

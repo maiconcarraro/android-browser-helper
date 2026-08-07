@@ -21,5 +21,19 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
+        <!-- Direct package visibility for known browsers. Unlike intent-based visibility,
+             package-name visibility doesn't depend on intent resolution, which intermittently
+             breaks on Samsung OneUI (queryIntentActivities returns empty — see
+             https://github.com/TrianguloY/URLCheck/issues/350). TwaProviderPicker probes these
+             packages directly via getApplicationInfo() when intent queries return nothing. -->
+        <package android:name="com.android.chrome" />
+        <package android:name="com.chrome.beta" />
+        <package android:name="com.chrome.dev" />
+        <package android:name="com.chrome.canary" />
+        <package android:name="com.microsoft.emmx" />
+        <package android:name="com.sec.android.app.sbrowser" />
+        <package android:name="org.mozilla.firefox" />
+        <package android:name="com.brave.browser" />
+        <package android:name="com.opera.browser" />
     </queries>
 </manifest>

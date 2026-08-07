@@ -636,6 +636,20 @@ public class LauncherActivity extends AppCompatActivity {
                     completionCallback);
             return;
         }
+        // Unlocked flow: we only get here when no usable browser could be auto-picked. On
+        // Samsung OneUI this is often transient even though Chrome is installed and running —
+        // Chrome in deep sleep fails to bind, or PackageManager browser queries transiently
+        // return nothing (e.g. Chrome mid-update), making providerPackage null. Falling through
+        // to CCT_FALLBACK_STRATEGY would then show the misleading "Chrome is blocked" dialog
+        // (it uses the hardcoded default browser name when the browser query comes back
+        // empty). Since a working browser clearly is (or was a moment ago) present, treat the
+        // failure as temporary and let the subclass retry instead.
+        if (providerPackage == null || isBrowserInstalledAndEnabled(providerPackage)) {
+            Log.w(TAG, "No usable browser (provider: " + providerPackage + "), but it appears "
+                    + "to be temporarily unavailable; delegating to retry hook");
+            onBrowserTemporarilyUnavailable();
+            return;
+        }
         TwaLauncher.CCT_FALLBACK_STRATEGY.launch(context, twaBuilder, providerPackage,
                 completionCallback);
     }

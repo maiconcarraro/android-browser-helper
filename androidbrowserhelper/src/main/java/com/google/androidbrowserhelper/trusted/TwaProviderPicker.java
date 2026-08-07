@@ -17,6 +17,7 @@ package com.google.androidbrowserhelper.trusted;
 import static androidx.browser.customtabs.CustomTabsService.TRUSTED_WEB_ACTIVITY_CATEGORY;
 
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
@@ -26,6 +27,7 @@ import android.util.Log;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,6 +77,28 @@ public class TwaProviderPicker {
         "org.chromium.chrome", // CHROMIUM_LOCAL_BUILD
         "com.microsoft.emmx", // MICROSOFT_EDGE
     };
+
+    /**
+     * Well-known browsers (in preference order) probed directly by package name when
+     * PackageManager intent queries return nothing — a transient system bug seen on Samsung
+     * OneUI (https://github.com/TrianguloY/URLCheck/issues/350). Direct package lookups via
+     * {@link PackageManager#getApplicationInfo} don't depend on intent resolution, so they
+     * still work when the query path is broken. Values are the launch mode each browser is
+     * known to support; these packages are declared as {@code <package>} queries in the
+     * library manifest so they stay visible without intent-based visibility.
+     */
+    private static final Map<String, Integer> knownProviders = new LinkedHashMap<>();
+    static {
+        knownProviders.put("com.android.chrome", LaunchMode.TRUSTED_WEB_ACTIVITY);
+        knownProviders.put("com.chrome.beta", LaunchMode.TRUSTED_WEB_ACTIVITY);
+        knownProviders.put("com.chrome.dev", LaunchMode.TRUSTED_WEB_ACTIVITY);
+        knownProviders.put("com.chrome.canary", LaunchMode.TRUSTED_WEB_ACTIVITY);
+        knownProviders.put("com.microsoft.emmx", LaunchMode.TRUSTED_WEB_ACTIVITY);
+        knownProviders.put("com.sec.android.app.sbrowser", LaunchMode.TRUSTED_WEB_ACTIVITY);
+        knownProviders.put("org.mozilla.firefox", LaunchMode.CUSTOM_TAB);
+        knownProviders.put("com.brave.browser", LaunchMode.CUSTOM_TAB);
+        knownProviders.put("com.opera.browser", LaunchMode.CUSTOM_TAB);
+    }
 
     @IntDef({LaunchMode.TRUSTED_WEB_ACTIVITY, LaunchMode.CUSTOM_TAB, LaunchMode.BROWSER})
     @Retention(RetentionPolicy.SOURCE)
@@ -160,6 +184,17 @@ public class TwaProviderPicker {
                     PackageManager.MATCH_ALL));
         }
 
+        if (possibleProviders.isEmpty()) {
+            // PackageManager reports zero installed browsers. On Samsung OneUI this happens
+            // intermittently due to a system bug where intent resolution transiently returns
+            // empty results (see https://github.com/TrianguloY/URLCheck/issues/350). Only the
+            // query path is broken — binding and launching still work — so probe well-known
+            // browsers directly by package name instead of giving up.
+            Log.w(TAG, "PackageManager returned no browsers at all — likely the transient "
+                    + "Samsung OneUI intent-resolution bug; probing known browsers directly");
+            return probeKnownProviders(pm, excludePackages);
+        }
+
         Map<String, Integer> customTabsServices = getLaunchModesForCustomTabsServices(pm);
         String preferredProviderName = "";
 
@@ -225,6 +260,33 @@ public class TwaProviderPicker {
 
         Log.d(TAG, "Found no TWA providers, using first browser: " + bestBrowserProvider);
         return new Action(LaunchMode.BROWSER, bestBrowserProvider);
+    }
+
+    /**
+     * Probes well-known browsers directly by package name, bypassing intent resolution. Used
+     * when PackageManager queries return no browsers at all (transient Samsung OneUI bug).
+     * Returns the first installed and enabled known browser, or {@code Action(BROWSER, null)}
+     * when none is found.
+     */
+    private static Action probeKnownProviders(PackageManager pm,
+            @Nullable Set<String> excludePackages) {
+        for (Map.Entry<String, Integer> knownProvider : knownProviders.entrySet()) {
+            String packageName = knownProvider.getKey();
+            if (excludePackages != null && excludePackages.contains(packageName)) {
+                continue;
+            }
+            try {
+                if (!pm.getApplicationInfo(packageName, 0).enabled) {
+                    continue;
+                }
+            } catch (PackageManager.NameNotFoundException e) {
+                continue; // Not installed.
+            }
+            Log.w(TAG, "Probed known provider directly: " + packageName);
+            return new Action(knownProvider.getValue(), packageName);
+        }
+        Log.w(TAG, "No known browser found via direct package probe");
+        return new Action(LaunchMode.BROWSER, null);
     }
 
     /**
