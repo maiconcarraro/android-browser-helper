@@ -62,6 +62,15 @@ public class TwaLauncher {
 
     private static final long BIND_RETRY_DELAY_MS = 1500;
 
+    /**
+     * Maximum time (ms) to wait for the Custom Tabs service connection after a successful
+     * {@code bindService()} call. On MIUI/HyperOS the browser's process can stay frozen by power
+     * management even though {@code bindService()} returned true, so
+     * {@code onCustomTabsServiceConnected} never fires and the app would hang on the splash
+     * screen forever. When the timeout fires we give up on the connection and run the fallback.
+     */
+    private static final long CONNECTION_TIMEOUT_MS = 5000;
+
     private static final int DEFAULT_SESSION_ID = 96375;
 
     private static final String EXTRA_STARTUP_UPTIME_MILLIS =
@@ -168,6 +177,11 @@ public class TwaLauncher {
     private boolean mServiceBound;
 
     private long mStartupUptimeMillis;
+
+    private final Handler mHandler = new Handler(Looper.getMainLooper());
+
+    @Nullable
+    private Runnable mConnectionTimeoutRunnable;
 
     public interface FallbackStrategy {
         void launch(Context context,
@@ -355,7 +369,7 @@ public class TwaLauncher {
             // Retry once after a delay to give the system time to wake the service.
             Log.w(TAG, "bindService returned false for " + mProviderPackage + ", retrying...");
             mServiceConnection = null;
-            new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            mHandler.postDelayed(() -> {
                 if (mDestroyed) return;
                 mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
                 mServiceConnection.setSessionCreationRunnables(
@@ -365,9 +379,50 @@ public class TwaLauncher {
                 if (!mServiceBound) {
                     Log.w(TAG, "bindService retry also failed for " + mProviderPackage);
                     mServiceConnection = null;
+                    cancelConnectionTimeout();
                     onSessionCreationFailedRunnable.run();
                 }
             }, BIND_RETRY_DELAY_MS);
+        }
+
+        // Guard against bindService() returning true but onCustomTabsServiceConnected never
+        // firing (seen on MIUI/HyperOS when the browser process stays frozen). Covers both the
+        // initial bind and the retry above, since the retry happens within the timeout window.
+        scheduleConnectionTimeout(onSessionCreationFailedRunnable);
+    }
+
+    private void scheduleConnectionTimeout(Runnable onSessionCreationFailedRunnable) {
+        cancelConnectionTimeout();
+        mConnectionTimeoutRunnable = () -> {
+            mConnectionTimeoutRunnable = null;
+            if (mDestroyed || mSession != null || mServiceConnection == null) {
+                // Connected in time, torn down, or the failure was already handled (e.g. the
+                // bind retry above already ran the failure runnable).
+                return;
+            }
+            Log.w(TAG, "Timed out waiting for Custom Tabs connection to " + mProviderPackage);
+            // Drop the session runnables first so a late onCustomTabsServiceConnected can't
+            // launch after the fallback already ran.
+            mServiceConnection.setSessionCreationRunnables(null, null);
+            if (mServiceBound) {
+                try {
+                    mContext.unbindService(mServiceConnection);
+                } catch (IllegalArgumentException e) {
+                    Log.w(TAG, "unbindService failed", e);
+                }
+                mServiceBound = false;
+            }
+            mServiceConnection = null;
+            // Run last: the fallback strategy may destroy this instance reentrantly.
+            onSessionCreationFailedRunnable.run();
+        };
+        mHandler.postDelayed(mConnectionTimeoutRunnable, CONNECTION_TIMEOUT_MS);
+    }
+
+    private void cancelConnectionTimeout() {
+        if (mConnectionTimeoutRunnable != null) {
+            mHandler.removeCallbacks(mConnectionTimeoutRunnable);
+            mConnectionTimeoutRunnable = null;
         }
     }
 
@@ -427,6 +482,7 @@ public class TwaLauncher {
         if (mDestroyed) {
             return;
         }
+        cancelConnectionTimeout();
         if (mServiceConnection != null && mServiceBound) {
             try {
                 mContext.unbindService(mServiceConnection);
@@ -527,6 +583,7 @@ public class TwaLauncher {
         @Override
         public void onCustomTabsServiceConnected(@NonNull ComponentName componentName,
                 @NonNull CustomTabsClient client) {
+            cancelConnectionTimeout();
             if (!ChromeLegacyUtils
                     .supportsLaunchWithoutWarmup(mContext.getPackageManager(), mProviderPackage)) {
                 client.warmup(0);
@@ -542,7 +599,9 @@ public class TwaLauncher {
                 }
             } catch (RuntimeException e) {
                 Log.w(TAG, e);
-                mOnSessionCreationFailedRunnable.run();
+                if (mOnSessionCreationFailedRunnable != null) {
+                    mOnSessionCreationFailedRunnable.run();
+                }
             }
 
             mOnSessionCreatedRunnable = null;
