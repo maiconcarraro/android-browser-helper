@@ -15,6 +15,7 @@
 package com.google.androidbrowserhelper.trusted;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ApplicationInfo;
@@ -35,6 +36,7 @@ import androidx.browser.customtabs.CustomTabColorSchemeParams;
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsSession;
+import androidx.browser.customtabs.TrustedWebUtils;
 import androidx.browser.trusted.FileHandlingData;
 import androidx.browser.trusted.ScreenOrientation;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode;
@@ -642,9 +644,12 @@ public class LauncherActivity extends AppCompatActivity {
         // return nothing (e.g. Chrome mid-update), making providerPackage null. Falling through
         // to CCT_FALLBACK_STRATEGY would then show the misleading "Chrome is blocked" dialog
         // (it uses the hardcoded default browser name when the browser query comes back
-        // empty). Since a working browser clearly is (or was a moment ago) present, treat the
-        // failure as temporary and let the subclass retry instead.
+        // empty). Since a working browser clearly is (or was a moment ago) present, first try
+        // to open the app without a service connection at all.
         if (providerPackage == null || isBrowserInstalledAndEnabled(providerPackage)) {
+            if (tryDirectTwaLaunch(context, twaBuilder, providerPackage, completionCallback)) {
+                return;
+            }
             Log.w(TAG, "No usable browser (provider: " + providerPackage + "), but it appears "
                     + "to be temporarily unavailable; delegating to retry hook");
             onBrowserTemporarilyUnavailable();
@@ -652,6 +657,40 @@ public class LauncherActivity extends AppCompatActivity {
         }
         TwaLauncher.CCT_FALLBACK_STRATEGY.launch(context, twaBuilder, providerPackage,
                 completionCallback);
+    }
+
+    /**
+     * Last-resort launch that bypasses the Custom Tabs service entirely. The service
+     * connection is only needed for warmup / splash transfer / session features — the
+     * browser performs the Digital Asset Links verification itself when the TWA extra is
+     * present, so the web app still opens as a full TWA. This recovers the case where the
+     * browser's Custom Tabs service is wedged at the system level (only a device reboot
+     * unsticks it) but its activity side still works. When {@code providerPackage} is null
+     * (browser queries broken), the intent is left untargeted and the system resolves the
+     * user's default browser — system-side resolution keeps working even when app-side
+     * queries return nothing (see URLCheck#350).
+     *
+     * @return true if the intent was dispatched, false if no activity could handle it.
+     */
+    private boolean tryDirectTwaLaunch(Context context, TrustedWebActivityIntentBuilder twaBuilder,
+            @Nullable String providerPackage, @Nullable Runnable completionCallback) {
+        try {
+            CustomTabsIntent intent = twaBuilder.buildCustomTabsIntent();
+            if (providerPackage != null) {
+                intent.intent.setPackage(providerPackage);
+            }
+            intent.intent.putExtra(TrustedWebUtils.EXTRA_LAUNCH_AS_TRUSTED_WEB_ACTIVITY, true);
+            intent.launchUrl(context, twaBuilder.getUri());
+            Log.w(TAG, "Launched directly into " + providerPackage
+                    + " without a service connection");
+        } catch (ActivityNotFoundException e) {
+            Log.w(TAG, "Direct launch failed for " + providerPackage, e);
+            return false;
+        }
+        if (completionCallback != null) {
+            completionCallback.run();
+        }
+        return true;
     }
 
     /**
