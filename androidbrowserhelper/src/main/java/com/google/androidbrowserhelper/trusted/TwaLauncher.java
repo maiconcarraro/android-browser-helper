@@ -402,12 +402,19 @@ public class TwaLauncher {
         }
 
         // Guard against bindService() returning true but onCustomTabsServiceConnected never
-        // firing (seen on MIUI/HyperOS when the browser process stays frozen). Covers both the
-        // initial bind and the retry above, since the retry happens within the timeout window.
-        scheduleConnectionTimeout(onSessionCreationFailedRunnable);
+        // firing (seen on MIUI/HyperOS when the browser process stays frozen, and on stock
+        // Android when Chrome needs a cold process start that outlasts the timeout). Covers
+        // both the initial bind and the retry above, since the retry happens within the
+        // timeout window.
+        scheduleConnectionTimeout(serviceIntent, customTabsCallback,
+                onSessionCreatedRunnable, onSessionCreationFailedRunnable, false);
     }
 
-    private void scheduleConnectionTimeout(Runnable onSessionCreationFailedRunnable) {
+    private void scheduleConnectionTimeout(Intent serviceIntent,
+            CustomTabsCallback customTabsCallback,
+            Runnable onSessionCreatedRunnable,
+            Runnable onSessionCreationFailedRunnable,
+            boolean isRebind) {
         cancelConnectionTimeout();
         mConnectionTimeoutRunnable = () -> {
             mConnectionTimeoutRunnable = null;
@@ -417,8 +424,8 @@ public class TwaLauncher {
                 return;
             }
             Log.w(TAG, "Timed out waiting for Custom Tabs connection to " + mProviderPackage);
-            // Drop the session runnables first so a late onCustomTabsServiceConnected can't
-            // launch after the fallback already ran.
+            // Drop the pending connection: clear its runnables so a late
+            // onCustomTabsServiceConnected can't launch after the fallback already ran.
             mServiceConnection.setSessionCreationRunnables(null, null);
             if (mServiceBound) {
                 try {
@@ -429,6 +436,26 @@ public class TwaLauncher {
                 mServiceBound = false;
             }
             mServiceConnection = null;
+            if (!isRebind) {
+                // Rebind once with a fresh connection before giving up. The browser may just
+                // be slow to start — a cold process start can outlast the first timeout while
+                // succeeding on the second attempt (what users do manually with close/reopen).
+                Log.w(TAG, "Rebinding Custom Tabs service for " + mProviderPackage);
+                mServiceConnection = new TwaCustomTabsServiceConnection(customTabsCallback);
+                mServiceConnection.setSessionCreationRunnables(
+                        onSessionCreatedRunnable, onSessionCreationFailedRunnable);
+                mServiceBound = CustomTabsServiceHelper.bindService(mContext, serviceIntent,
+                        mServiceConnection, Context.BIND_AUTO_CREATE | Context.BIND_WAIVE_PRIORITY);
+                if (!mServiceBound) {
+                    Log.w(TAG, "Rebind returned false for " + mProviderPackage);
+                    mServiceConnection = null;
+                    onSessionCreationFailedRunnable.run();
+                    return;
+                }
+                scheduleConnectionTimeout(serviceIntent, customTabsCallback,
+                        onSessionCreatedRunnable, onSessionCreationFailedRunnable, true);
+                return;
+            }
             // Run last: the fallback strategy may destroy this instance reentrantly.
             onSessionCreationFailedRunnable.run();
         };
@@ -599,6 +626,12 @@ public class TwaLauncher {
         @Override
         public void onCustomTabsServiceConnected(@NonNull ComponentName componentName,
                 @NonNull CustomTabsClient client) {
+            if (mServiceConnection != this) {
+                // Stale connection — a watchdog rebind already replaced this one. Ignore the
+                // callback so it can't cancel the new timeout or clobber the new session.
+                Log.w(TAG, "Ignoring connect callback from a stale service connection");
+                return;
+            }
             cancelConnectionTimeout();
             if (!ChromeLegacyUtils
                     .supportsLaunchWithoutWarmup(mContext.getPackageManager(), mProviderPackage)) {
@@ -626,6 +659,9 @@ public class TwaLauncher {
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
+            if (mServiceConnection != this) {
+                return; // Stale connection — must not clear the replacement's session.
+            }
             mSession = null;
         }
     }
