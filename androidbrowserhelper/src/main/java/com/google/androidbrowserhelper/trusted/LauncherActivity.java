@@ -16,11 +16,13 @@ package com.google.androidbrowserhelper.trusted;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.content.res.Configuration;
+import android.content.pm.PackageManager;
 import android.graphics.Matrix;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
+import android.view.WindowManager;
 import android.widget.ImageView;
 
 import androidx.annotation.NonNull;
@@ -28,17 +30,22 @@ import androidx.annotation.Nullable;
 import androidx.browser.customtabs.CustomTabColorSchemeParams;
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsIntent;
-import androidx.browser.trusted.ScreenOrientation;
+import androidx.browser.trusted.FileHandlingData;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode;
 import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
 import androidx.browser.trusted.TrustedWebActivityService;
 import androidx.browser.trusted.sharing.ShareData;
 import androidx.browser.trusted.sharing.ShareTarget;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
 
 import com.google.androidbrowserhelper.trusted.splashscreens.PwaWrapperSplashScreenStrategy;
 
 import org.json.JSONException;
+
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 /**
  * A convenience class to make using Trusted Web Activities easier. You can extend this class for
@@ -120,10 +127,16 @@ public class LauncherActivity extends Activity {
     @Nullable
     private TwaLauncher mTwaLauncher;
 
+    private long mStartupUptimeMillis;
+
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        WindowCompat.enableEdgeToEdge(getWindow());
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+
+        mStartupUptimeMillis = SystemClock.uptimeMillis();
         sLauncherActivitiesAlive++;
         boolean twaAlreadyRunning = sLauncherActivitiesAlive > 1;
         boolean intentHasData = getIntent().getData() != null;
@@ -164,7 +177,8 @@ public class LauncherActivity extends Activity {
                     getSplashImageScaleType(),
                     getSplashImageTransformationMatrix(),
                     mMetadata.splashScreenFadeOutDurationMillis,
-                    mMetadata.fileProviderAuthority);
+                    mMetadata.fileProviderAuthority,
+                    mMetadata.startChromeBeforeAnimationComplete);
         }
 
         if (shouldLaunchImmediately()) {
@@ -174,7 +188,7 @@ public class LauncherActivity extends Activity {
 
     /**
      * Signals if {@link LauncherActivity} should automatically launch the Trusted Web Activity on
-     * {@linke #onCreate()}. Return {@code false} when a subclass needs to perform an asynchronous
+     * {@link #onCreate(Bundle)}. Return {@code false} when a subclass needs to perform an asynchronous
      * task before launching the Trusted Web Activity. The subclass will then be responsible for
      * calling {@link #launchTwa()} itself once the asynchronous task is finished.
      */
@@ -195,6 +209,11 @@ public class LauncherActivity extends Activity {
             return;
         }
 
+        CustomTabColorSchemeParams defaultColorScheme = new CustomTabColorSchemeParams.Builder()
+                .setNavigationBarColor(getColorCompat(mMetadata.navigationBarColorId))
+                .setNavigationBarDividerColor(getColorCompat(mMetadata.navigationBarDividerColorId))
+                .setToolbarColor(getColorCompat(mMetadata.statusBarColorId))
+                .build();
         CustomTabColorSchemeParams darkModeColorScheme = new CustomTabColorSchemeParams.Builder()
                 .setToolbarColor(getColorCompat(mMetadata.statusBarColorDarkId))
                 .setNavigationBarColor(getColorCompat(mMetadata.navigationBarColorDarkId))
@@ -202,29 +221,39 @@ public class LauncherActivity extends Activity {
                         getColorCompat(mMetadata.navigationBarDividerColorDarkId))
                 .build();
 
+        Uri launchUrl = getLaunchingUrl();
         TrustedWebActivityIntentBuilder twaBuilder =
-                new TrustedWebActivityIntentBuilder(getLaunchingUrl())
-                        .setToolbarColor(getColorCompat(mMetadata.statusBarColorId))
-                        .setNavigationBarColor(getColorCompat(mMetadata.navigationBarColorId))
-                        .setNavigationBarDividerColor(
-                                getColorCompat(mMetadata.navigationBarDividerColorId))
+                new TrustedWebActivityIntentBuilder(launchUrl)
+                        .setDefaultColorSchemeParams(defaultColorScheme)
                         .setColorScheme(CustomTabsIntent.COLOR_SCHEME_SYSTEM)
                         .setColorSchemeParams(
                                 CustomTabsIntent.COLOR_SCHEME_DARK, darkModeColorScheme)
                         .setDisplayMode(getDisplayMode())
-                        .setScreenOrientation(getOrientation());
+                        .setDisplayOverrideList(mMetadata.displayOverrideList)
+                        .setScreenOrientation(mMetadata.screenOrientation)
+                        .setLaunchHandlerClientMode(mMetadata.launchHandlerClientMode);
+
+        Uri intentUrl = getUrlForIntent(getIntent());
+        if (!launchUrl.equals(intentUrl) && intentUrl != null) {
+            twaBuilder.setOriginalLaunchUrl(intentUrl);
+        }
 
         if (mMetadata.additionalTrustedOrigins != null) {
             twaBuilder.setAdditionalTrustedOrigins(mMetadata.additionalTrustedOrigins);
         }
 
         addShareDataIfPresent(twaBuilder);
+        addFileDataIfPresent(twaBuilder);
 
         mTwaLauncher = createTwaLauncher();
+        mTwaLauncher.setStartupUptimeMillis(mStartupUptimeMillis);
         mTwaLauncher.launch(twaBuilder,
                 getCustomTabsCallback(),
                 mSplashScreenStrategy,
-                () -> mBrowserWasLaunched = true,
+                () -> {
+                    mBrowserWasLaunched = true;
+                    finish();
+                },
                 getFallbackStrategy());
 
         if (!sChromeVersionChecked) {
@@ -249,7 +278,8 @@ public class LauncherActivity extends Activity {
     }
 
     protected TwaLauncher createTwaLauncher() {
-        return new TwaLauncher(this);
+        return new TwaLauncher(this, mMetadata.launchingBrowser, SessionStore.makeSessionId(getTaskId()),
+                new SharedPreferencesTokenStore(this));
     }
 
     /**
@@ -284,8 +314,33 @@ public class LauncherActivity extends Activity {
             ShareTarget shareTarget = SharingUtils.parseShareTargetJson(mMetadata.shareTarget);
             twaBuilder.setShareParams(shareTarget, shareData);
         } catch (JSONException e) {
-            Log.d(TAG, "Failed to parse share target json: " + e.toString());
+            Log.d(TAG, "Failed to parse share target json: " + e);
         }
+    }
+
+    private void addFileDataIfPresent(TrustedWebActivityIntentBuilder twaBuilder) {
+        List<Uri> uris;
+
+        if (getIntent().hasExtra(TrustedWebActivityIntentBuilder.EXTRA_FILE_HANDLING_DATA)) {
+            Bundle bundle = getIntent().getBundleExtra(TrustedWebActivityIntentBuilder.EXTRA_FILE_HANDLING_DATA);
+            if (bundle == null) return;
+            uris = FileHandlingData.fromBundle(bundle).uris;
+        } else {
+            uris = Collections.singletonList(getIntent().getData());
+        }
+
+        for (Uri uri : uris) {
+            if (uri == null || !"content".equals(uri.getScheme())) return;
+
+            int granted = checkCallingOrSelfUriPermission(uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            if (granted != PackageManager.PERMISSION_GRANTED) {
+                Log.d(TAG, "Failed to open a file - no read / write permissions: " + uri);
+                return;
+            }
+        }
+
+        twaBuilder.setFileHandlingData(new FileHandlingData(uris));
     }
 
     /**
@@ -335,9 +390,35 @@ public class LauncherActivity extends Activity {
     }
 
     @Override
-    protected void onSaveInstanceState(Bundle outState) {
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         outState.putBoolean(BROWSER_WAS_LAUNCHED_KEY, mBrowserWasLaunched);
+    }
+
+    /**
+     * Override this to enable Protocol Handler support.
+     * Keys of this map are data schemes, e.g. "bitcoin", "irc", "xmpp", "web+coffee", and values
+     * are templates that will be used to construct the full URL. The template must contain a "%s"
+     * token and be an absolute location with http/https scheme and the same origin as the TWA.
+     *
+     * An example valid entry in the map would be:
+     * ["web+coffee"] -> ["https://coffee.com/?type=%s"]
+     * This would result in a link "web+coffee://latte" being converted to
+     * "https://coffee.com/?type=web%2Bcoffee%3A%2F%2Flatte".
+     *
+     * {@see https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Manifest/Reference/protocol_handlers}
+     */
+    protected Map<String, Uri> getProtocolHandlers() {
+        return Collections.emptyMap();
+    }
+
+    /**
+     * Override this to define a custom mapping from intent to URL (e.g., based on intent action).
+     * The returned URL may be further modified by the Protocol Handler support.
+     */
+    @Nullable
+    protected Uri getUrlForIntent(Intent intent) {
+        return intent.getData();
     }
 
     @Override
@@ -350,25 +431,49 @@ public class LauncherActivity extends Activity {
 
     /**
      * Returns the URL that the Trusted Web Activity should be launched to. By default this
-     * implementation checks to see if the Activity was launched with an Intent with data, if so
-     * attempt to launch to that URL. If not, read the
+     * implementation checks to see if there is a URL specified for the Intent that launched the
+     * Activity, and if so attempts to launch to that URL. If not, reads the
      * "android.support.customtabs.trusted.DEFAULT_URL" metadata from the manifest.
      *
      * Override this for special handling (such as ignoring or sanitising data from the Intent).
      */
     protected Uri getLaunchingUrl() {
-        Uri uri = getIntent().getData();
-        if (uri != null) {
-            Log.d(TAG, "Using URL from Intent (" + uri + ").");
-            return uri;
+        Uri defaultUrl = Uri.parse(mMetadata.defaultUrl);
+
+        Uri intentUrl = getUrlForIntent(getIntent());
+
+        if (intentUrl != null) {
+            Map<String, Uri> protocolHandlers = getProtocolHandlers();
+            String scheme = intentUrl.getScheme();
+
+            if ("https".equals(scheme)) {
+                Log.d(TAG, "Using url from Intent: " + intentUrl);
+                return intentUrl;
+            }
+
+            if ("content".equals(scheme)) {
+                // The application was launched by opening a file - return the URL configured for
+                // this file type in the manifest
+                if (mMetadata.fileHandlingActionUrl == null) {
+                    return defaultUrl;
+                }
+                return Uri.parse(mMetadata.fileHandlingActionUrl);
+            }
+
+            Uri format = protocolHandlers.get(scheme);
+            if (format != null) {
+                String target = Uri.encode(intentUrl.toString());
+                Uri targetUrl = Uri.parse(String.format(format.toString(), target));
+                Log.d(TAG, "Using protocol handler url: " + targetUrl);
+                return targetUrl;
+            }
+
+            Log.w(TAG, "Scheme " + scheme + " was registered in the manifest but not in " +
+                    "getProtocolHandlers()! Ignoring it and falling back to the default url.");
         }
 
-        if (mMetadata.defaultUrl != null) {
-            Log.d(TAG, "Using URL from Manifest (" + mMetadata.defaultUrl + ").");
-            return Uri.parse(mMetadata.defaultUrl);
-        }
-
-        return Uri.parse("https://www.example.com/");
+        Log.d(TAG, "Using url from Manifest: " + defaultUrl);
+        return defaultUrl;
     }
 
     /**
@@ -380,6 +485,9 @@ public class LauncherActivity extends Activity {
      * fallback implementation ot starting a native Activity.
      */
     protected TwaLauncher.FallbackStrategy getFallbackStrategy() {
+        if (mMetadata.launchingBrowser != null) {
+            return TwaLauncher.getBlockedDialogFallbackStrategy(mMetadata.launchingBrowserName);
+        }
         if (FALLBACK_TYPE_WEBVIEW.equalsIgnoreCase(mMetadata.fallbackStrategyType)) {
             return TwaLauncher.WEBVIEW_FALLBACK_STRATEGY;
         }

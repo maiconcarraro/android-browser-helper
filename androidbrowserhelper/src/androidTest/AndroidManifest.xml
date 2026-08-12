@@ -12,11 +12,23 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <uses-sdk android:minSdkVersion="16" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-sdk android:minSdkVersion="16"/>
 
     <application>
+        <activity android:name="androidx.test.core.app.InstrumentationActivityInvoker$BootstrapActivity"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:exported" />
+        <activity android:name="androidx.test.core.app.InstrumentationActivityInvoker$EmptyActivity"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:exported" />
+        <activity android:name="androidx.test.core.app.InstrumentationActivityInvoker$EmptyFloatingActivity"
+            android:exported="true"
+            tools:node="merge"
+            tools:replace="android:exported" />
 
         <activity
             android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
@@ -26,10 +38,8 @@
                 android:value="https://www.test.com/default_url/" />
         </activity>
 
-        <activity
-            android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestActivity"
-            android:enabled="false"
-            android:exported="false">
+        <activity android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestActivity"
+                  android:enabled="false" android:exported="true">
             <!-- A browsable intent filter is required for the DelegationService. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -48,19 +58,15 @@
             </intent-filter>
         </activity>
 
-        <service
-            android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestCustomTabsService"
-            android:enabled="false"
-            android:exported="false">
+        <service android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestCustomTabsService"
+                 android:enabled="false" android:exported="true">
             <intent-filter>
-                <category android:name="androidx.browser.trusted.category.TrustedWebActivities" />
+                <action android:name="android.support.customtabs.action.CustomTabsService" />
             </intent-filter>
         </service>
 
-        <service
-            android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestCustomTabsServiceSupportsTwas"
-            android:enabled="false"
-            android:exported="false">
+        <service android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestCustomTabsServiceSupportsTwas"
+                 android:enabled="false" android:exported="true">
             <intent-filter>
                 <action android:name="android.support.customtabs.action.CustomTabsService" />
 
@@ -70,10 +76,8 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestCustomTabsServiceNoSplashScreens"
-            android:enabled="false"
-            android:exported="false">
+        <service android:name="com.google.androidbrowserhelper.trusted.testcomponents.TestCustomTabsServiceNoSplashScreens"
+                 android:enabled="false" android:exported="true">
             <intent-filter>
                 <action android:name="android.support.customtabs.action.CustomTabsService" />
                 <category android:name="androidx.browser.trusted.category.TrustedWebActivities" />
@@ -96,12 +100,11 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
-            android:enabled="false"
-            android:exported="false"
-            android:label="Test Launcher Activity"
-            android:theme="@style/Theme.AppCompat.Light">
+        <activity android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+                  android:theme="@style/Theme.AppCompat.Light"
+                  android:label="Test Launcher Activity"
+                  android:enabled="false"
+                  android:exported="true">
 
             <meta-data
                 android:name="android.support.customtabs.trusted.DEFAULT_URL"

@@ -1,0 +1,12 @@
+<resources>
+  <string name="android_browser_helper_app_name">Android Browser Helper</string>
+  <string name="update_chrome_toast">សូម​ដំឡើង​ទៅ​កំណែមានស្ថិរភាព​របស់ Chrome 72 ឬខ្ពស់​ជាងនេះ។</string>
+  <string name="no_provider_toast">សូម​ដំឡើង​កំណែមានស្ថិរភាព​របស់ Chrome 72 ឬខ្ពស់​ជាងនេះ។</string>
+  <string name="manage_space_not_supported_toast">ទិន្នន័យ​របស់​កម្មវិធីនេះ​ត្រូវបាន​រក្សាទុក​នៅក្នុង %1$s។</string>
+  <string name="manage_space_no_data_toast">កម្មវិធីនេះ​មិនរក្សាទុក​ទិន្នន័យរុករក​ទេ។</string>
+  <string name="provider_unavailable_title">មិនអាចប្រើ​កម្មវិធី​បានទេ</string>
+  <string name="provider_unavailable_message">មិនអាចប្រើ​កម្មវិធីនេះ​បានទេ ដោយសារ %1$s ត្រូវបាន​ទប់ស្កាត់</string>
+  <string name="provider_unavailable_fallback_message">មិនអាចប្រើ​កម្មវិធីនេះ​បានទេ។</string>
+  <string name="provider_unavailable_button_ok">យល់ព្រម</string>
+  <string name="provider_unavailable_default_browser">Chrome</string>
+</resources>

@@ -14,15 +14,24 @@
 
 package com.google.androidbrowserhelper.trusted;
 
+
+import static android.R.style.Theme_DeviceDefault_Dialog_Alert;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
+import android.text.TextUtils;
 import android.util.Log;
 
-import com.google.androidbrowserhelper.trusted.splashscreens.SplashScreenStrategy;
-
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsClient;
 import androidx.browser.customtabs.CustomTabsIntent;
@@ -34,10 +43,12 @@ import androidx.browser.trusted.Token;
 import androidx.browser.trusted.TokenStore;
 import androidx.browser.trusted.TrustedWebActivityIntent;
 import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
-import androidx.core.content.ContextCompat;
 
-import com.google.androidbrowserhelper.trusted.ChromeOsSupport;
+import com.google.androidbrowserhelper.BuildConfig;
+import com.google.androidbrowserhelper.R;
 import com.google.androidbrowserhelper.trusted.splashscreens.SplashScreenStrategy;
+
+import java.util.List;
 
 /**
  * Encapsulates the steps necessary to launch a Trusted Web Activity, such as establishing a
@@ -48,8 +59,57 @@ public class TwaLauncher {
 
     private static final int DEFAULT_SESSION_ID = 96375;
 
+    private static final String EXTRA_STARTUP_UPTIME_MILLIS =
+            "org.chromium.chrome.browser.customtabs.trusted.STARTUP_UPTIME_MILLIS";
+
+    private static final String EXTRA_ANDROID_BROWSER_HELPER_VERSION =
+            "org.chromium.chrome.browser.ANDROID_BROWSER_HELPER_VERSION";
+
+
+
+    /** 
+     * Strategy for showing a dialog when no browser is available. Interface exists just to
+     * facilitate unit testing.
+     */
+    public interface BrowserUnavailableDialogStrategy {
+        void show(Activity activity, boolean queryInstalledBrowsers, @Nullable String browserName);
+    }
+
+    private static BrowserUnavailableDialogStrategy sDialogStrategy =
+            TwaLauncher::showBrowserUnavailableDialog;
+
+    /** For testing: allows mocking the dialog show. */
+    @VisibleForTesting
+    public static void setDialogStrategyForTesting(BrowserUnavailableDialogStrategy strategy) {
+        sDialogStrategy = strategy;
+    }
+
+    /**
+     * Returns a FallbackStrategy that shows the browser unavailable dialog with the specified browser name.
+     */
+    public static FallbackStrategy getBlockedDialogFallbackStrategy(@Nullable String browserName) {
+        return (context, twaBuilder, providerPackage, completionCallback) -> {
+            if (context instanceof Activity) {
+                sDialogStrategy.show((Activity) context, false, browserName);
+            } else {
+                Log.e(TAG, "Cannot show browser unavailable dialog without an Activity context.");
+            }
+        };
+    }
+
     public static final FallbackStrategy CCT_FALLBACK_STRATEGY =
             (context, twaBuilder, providerPackage, completionCallback) -> {
+        if (providerPackage == null) {
+            providerPackage = CustomTabsClient.getPackageName(context, null);
+        }
+        if (providerPackage == null) {
+            if (context instanceof Activity) {
+                sDialogStrategy.show((Activity) context, true, null);
+            } else {
+                Log.e(TAG, "Cannot show browser unavailable dialog without an Activity context.");
+            }
+            return;
+        }
         // CustomTabsIntent will fall back to launching the Browser if there are no Custom Tabs
         // providers installed.
         CustomTabsIntent intent = twaBuilder.buildCustomTabsIntent();
@@ -92,9 +152,11 @@ public class TwaLauncher {
     @Nullable
     private CustomTabsSession mSession;
 
-    private TokenStore mTokenStore;
+    private final TokenStore mTokenStore;
 
     private boolean mDestroyed;
+
+    private long mStartupUptimeMillis;
 
     public interface FallbackStrategy {
         void launch(Context context,
@@ -108,7 +170,7 @@ public class TwaLauncher {
      * If no browser supports TWA, will launch a usual Custom Tab (see {@link TwaProviderPicker}.
      */
     public TwaLauncher(Context context) {
-        this(context, null);
+        this(context, (String) null);
     }
 
     /**
@@ -121,10 +183,29 @@ public class TwaLauncher {
     }
 
     /**
+     * @deprecated This method is no longer recommended for use since TwaLauncher is rolling back to
+     * sessionId instead of taskId.
+     */
+    @Deprecated(forRemoval = true)
+    public TwaLauncher(Context context, @Nullable Integer taskId) {
+        this(context, null, taskId);
+    }
+
+    /**
+     * @deprecated This method is no longer recommended for use since TwaLauncher is rolling back to
+     * sessionId instead of taskId.
+     */
+    @Deprecated(forRemoval = true)
+    public TwaLauncher(Context context, @Nullable String providerPackage, @Nullable Integer taskId) {
+        this(context, providerPackage, SessionStore.makeSessionId(taskId),
+                new SharedPreferencesTokenStore(context));
+    }
+
+    /**
      * Same as above, but also accepts a session id. This allows to launch multiple TWAs in the same
      * task.
      */
-    public TwaLauncher(Context context, @Nullable String providerPackage, int sessionId,
+    public TwaLauncher(Context context, @Nullable String providerPackage, @Nullable Integer sessionId,
                        TokenStore tokenStore) {
         mContext = context;
         mSessionId = sessionId;
@@ -184,7 +265,7 @@ public class TwaLauncher {
 
         // Remember who we connect to as the package that is allowed to delegate notifications
         // to us.
-        if (!ChromeOsSupport.isRunningOnArc(mContext.getPackageManager())) {
+        if (!ChromeOsSupport.isRunningOnArc(mContext.getPackageManager()) && mProviderPackage != null) {
             // Since ChromeOS may not follow this path when launching a TWA, we set the verified
             // provider in DelegationService instead.
             mTokenStore.store(Token.create(mProviderPackage, mContext.getPackageManager()));
@@ -241,8 +322,11 @@ public class TwaLauncher {
 
         mServiceConnection.setSessionCreationRunnables(
                 onSessionCreatedRunnable, onSessionCreationFailedRunnable);
-        CustomTabsClient.bindCustomTabsServicePreservePriority(
+        boolean bound = CustomTabsClient.bindCustomTabsServicePreservePriority(
                 mContext, mProviderPackage, mServiceConnection);
+        if (!bound) {
+            onSessionCreationFailedRunnable.run();
+        }
     }
 
     private void launchWhenSessionEstablished(TrustedWebActivityIntentBuilder twaBuilder,
@@ -268,13 +352,30 @@ public class TwaLauncher {
                      // for further details.
         }
         Log.d(TAG, "Launching Trusted Web Activity.");
-        TrustedWebActivityIntent intent = builder.build(mSession);
+        TrustedWebActivityIntent intent = onPrepareIntent(builder.build(mSession));
+        if (mStartupUptimeMillis != 0) {
+            intent.getIntent().putExtra(EXTRA_STARTUP_UPTIME_MILLIS, mStartupUptimeMillis);
+        }
+        intent.getIntent().putExtra(
+                EXTRA_ANDROID_BROWSER_HELPER_VERSION, BuildConfig.LIBRARY_VERSION);
         FocusActivity.addToIntent(intent.getIntent(), mContext);
         intent.launchTrustedWebActivity(mContext);
 
         if (completionCallback != null) {
             completionCallback.run();
         }
+    }
+
+    /**
+     * Hook method for subclasses to customize the Trusted Web Activity Intent before launch.
+     * This method is called with the built Intent and can be overridden to add custom headers,
+     * extras, or other modifications.
+     *
+     * @param intent the built TrustedWebActivityIntent that will be launched
+     * @return the (potentially modified) TrustedWebActivityIntent to launch
+     */
+    protected TrustedWebActivityIntent onPrepareIntent(TrustedWebActivityIntent intent) {
+        return intent;
     }
 
     /**
@@ -299,10 +400,62 @@ public class TwaLauncher {
         return mProviderPackage;
     }
 
+    /**
+     * Sets the timestamp (in SystemClock.uptimeMillis()) when the TWA launcher
+     * activity was created. This timestamp is used to report the full startup
+     * duration to the browser.
+     */
+    public void setStartupUptimeMillis(long startupUptimeMillis) {
+        mStartupUptimeMillis = startupUptimeMillis;
+    }
+
+    /**
+     * Shows a dialog explaining that no browser is available to open the URL.
+     *
+     * @param activity The {@link Activity} used to show the dialog.
+     * @param queryInstalledBrowsers Whether to query the system for installed browsers to determine the browser name.
+     * @param browserName The name of the browser to display, if known.
+     */
+    private static void showBrowserUnavailableDialog(Activity activity, boolean queryInstalledBrowsers, @Nullable String browserName) {
+        if (queryInstalledBrowsers) {
+            PackageManager pm = activity.getPackageManager();
+
+            // Query for all browsers that can handle a standard URL. This allows us to find the
+            // user's preferred browser to provide a helpful name in the dialog.
+            Intent queryBrowsersIntent = new Intent()
+                    .setAction(Intent.ACTION_VIEW)
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                    .setData(Uri.fromParts("http", "", null));
+
+            List<ResolveInfo> allBrowsers = pm.queryIntentActivities(queryBrowsersIntent,
+                    PackageManager.MATCH_DEFAULT_ONLY | PackageManager.MATCH_UNINSTALLED_PACKAGES);
+
+            browserName = activity.getString(R.string.provider_unavailable_default_browser);
+            if (!allBrowsers.isEmpty()) {
+                // The list is ordered from best to worst match, so we pick the first one.
+                browserName = allBrowsers.get(0).loadLabel(pm).toString();
+            }
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity, Theme_DeviceDefault_Dialog_Alert);
+        builder.setTitle(R.string.provider_unavailable_title);
+
+        if (TextUtils.isEmpty(browserName)) {
+            builder.setMessage(activity.getString(R.string.provider_unavailable_fallback_message));
+        } else {
+            builder.setMessage(activity.getString(R.string.provider_unavailable_message, browserName));
+        }
+
+        builder.setPositiveButton(R.string.provider_unavailable_button_ok, (dialog, which) -> dialog.dismiss())
+                .setCancelable(true);
+        builder.setOnDismissListener(dialog -> activity.finish());
+        builder.show();
+    }
+
     private class TwaCustomTabsServiceConnection extends CustomTabsServiceConnection {
         private Runnable mOnSessionCreatedRunnable;
         private Runnable mOnSessionCreationFailedRunnable;
-        private CustomTabsCallback mCustomTabsCallback;
+        private final CustomTabsCallback mCustomTabsCallback;
 
         TwaCustomTabsServiceConnection(CustomTabsCallback callback) {
             mCustomTabsCallback = callback;
@@ -315,8 +468,8 @@ public class TwaLauncher {
         }
 
         @Override
-        public void onCustomTabsServiceConnected(ComponentName componentName,
-                CustomTabsClient client) {
+        public void onCustomTabsServiceConnected(@NonNull ComponentName componentName,
+                @NonNull CustomTabsClient client) {
             if (!ChromeLegacyUtils
                     .supportsLaunchWithoutWarmup(mContext.getPackageManager(), mProviderPackage)) {
                 client.warmup(0);

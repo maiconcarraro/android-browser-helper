@@ -14,14 +14,17 @@
  *    limitations under the License.
  */
 
-apply plugin: 'com.android.application'
+plugins {
+    id 'com.android.application'
+}
 
 android {
     namespace "com.google.androidbrowserhelper.demo"
-    compileSdkVersion 31
+
     defaultConfig {
         applicationId "com.google.androidbrowserhelper"
         minSdkVersion 23
+        compileSdk 36
         targetSdkVersion 31
         versionCode 1
         versionName "1.0"
@@ -34,17 +37,17 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = 1.8
-        targetCompatibility = 1.8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 }
 
 dependencies {
-    api 'androidx.browser:browser:1.4.0'
+    api libs.androidx.browser
     implementation project(path: ':androidbrowserhelper')
 
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    testImplementation 'junit:junit:4.12'
-    androidTestImplementation 'androidx.test:runner:1.2.0'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.2.0'
+    testImplementation libs.junit
+    androidTestImplementation libs.androidx.runner
+    androidTestImplementation libs.androidx.test.espresso.core
 }

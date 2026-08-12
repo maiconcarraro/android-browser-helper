@@ -1,3 +1,32 @@
+import org.gradle.api.initialization.resolve.RepositoriesMode
+
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "android-browser-helper"
+
+dependencyResolutionManagement {
+    repositories {
+        repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+
+        google()
+        mavenCentral()
+
+        // Repository for DexMaker
+        maven {
+            url = "https://linkedin.jfrog.io/artifactory/open-source/"
+            content {
+                includeGroup 'com.linkedin.dexmaker'
+            }
+        }
+    }
+}
+
 include ':androidbrowserhelper'
 include ':locationdelegation'
 include ':playbilling'
@@ -6,6 +35,8 @@ include ':demos:custom-tabs-example-app'
 include ':demos:custom-tabs-headers'
 include ':demos:custom-tabs-navigation-callbacks'
 include ':demos:custom-tabs-oauth'
+include ':demos:custom-tabs-auth-tab'
+include ':demos:custom-tabs-ephemeral-with-fallback'
 include ':demos:custom-tabs-ephemeral'
 include ':demos:custom-tabs-session'
 include ':demos:twa-basic'
