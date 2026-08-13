@@ -32,8 +32,6 @@ android {
         minSdkVersion 23
         compileSdk 36
         targetSdkVersion 31
-        versionCode VERSION_CODE
-        versionName VERSION
 
         buildConfigField "int", "LIBRARY_VERSION", "${versionCode}"
 
