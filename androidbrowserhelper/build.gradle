@@ -33,7 +33,7 @@ android {
         compileSdk 36
         targetSdkVersion 31
 
-        buildConfigField "int", "LIBRARY_VERSION", "${versionCode}"
+        buildConfigField "int", "LIBRARY_VERSION", "${VERSION_CODE}"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
