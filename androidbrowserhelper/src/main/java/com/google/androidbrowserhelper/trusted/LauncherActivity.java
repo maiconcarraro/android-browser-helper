@@ -31,6 +31,7 @@ import androidx.browser.customtabs.CustomTabColorSchemeParams;
 import androidx.browser.customtabs.CustomTabsCallback;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.trusted.FileHandlingData;
+import androidx.browser.trusted.ScreenOrientation;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode;
 import androidx.browser.trusted.TrustedWebActivityIntentBuilder;
 import androidx.browser.trusted.TrustedWebActivityService;
@@ -230,7 +231,7 @@ public class LauncherActivity extends Activity {
                                 CustomTabsIntent.COLOR_SCHEME_DARK, darkModeColorScheme)
                         .setDisplayMode(getDisplayMode())
                         .setDisplayOverrideList(mMetadata.displayOverrideList)
-                        .setScreenOrientation(mMetadata.screenOrientation)
+                        .setScreenOrientation(getOrientation())
                         .setLaunchHandlerClientMode(mMetadata.launchHandlerClientMode);
 
         Uri intentUrl = getUrlForIntent(getIntent());
@@ -286,8 +287,7 @@ public class LauncherActivity extends Activity {
      * Determines if the device is a tablet based on screen size
      */
     private boolean isTablet() {
-        Configuration config = getResources().getConfiguration();
-        return (config.screenLayout & Configuration.SCREENLAYOUT_SIZE_MASK) >= Configuration.SCREENLAYOUT_SIZE_LARGE;
+        return getResources().getConfiguration().smallestScreenWidthDp >= 600;
     }
 
     private boolean splashScreenNeeded() {
@@ -502,7 +502,7 @@ public class LauncherActivity extends Activity {
      */
     protected int getOrientation() {
         if (isTablet()) {
-            return ScreenOrientation.ANY;
+            return ScreenOrientation.DEFAULT;
         }
 
         return ScreenOrientation.PORTRAIT;
