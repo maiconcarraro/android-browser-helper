@@ -30,8 +30,8 @@ android {
 
     defaultConfig {
         minSdkVersion 23
-        compileSdk 36
-        targetSdkVersion 31
+        compileSdk 37
+        targetSdkVersion 37
 
         buildConfigField "int", "LIBRARY_VERSION", "${VERSION_CODE}"
 

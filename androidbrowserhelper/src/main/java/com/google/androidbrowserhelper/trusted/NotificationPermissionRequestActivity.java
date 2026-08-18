@@ -37,11 +37,7 @@ public class NotificationPermissionRequestActivity extends Activity {
 
     static final String KEY_PERMISSION_STATUS = "permissionStatus";
 
-    // TODO: Use Manifest.permission.POST_NOTIFICATIONS when it is released.
     private static final String PERMISSION_POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS";
-
-    // TODO: Use Build.VERSION_CODES when it is released.
-    private static final int VERSION_T = 33;
 
     private static final String EXTRA_NOTIFICATION_CHANNEL_NAME = "notificationChannelName";
     private static final String EXTRA_MESSENGER = "messenger";
@@ -75,7 +71,7 @@ public class NotificationPermissionRequestActivity extends Activity {
 
         // When running on T or greater, with the app targeting less than T, creating a channel for the first time will
         // trigger the permission dialog.
-        if (Build.VERSION.SDK_INT >= VERSION_T && getApplicationContext().getApplicationInfo().targetSdkVersion < VERSION_T) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && getApplicationContext().getApplicationInfo().targetSdkVersion < Build.VERSION_CODES.TIRAMISU) {
             NotificationUtils.createNotificationChannel(this, mChannelName);
         }
 

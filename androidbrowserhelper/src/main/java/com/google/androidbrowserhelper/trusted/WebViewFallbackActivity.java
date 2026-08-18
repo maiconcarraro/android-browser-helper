@@ -43,6 +43,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -88,14 +92,28 @@ public class WebViewFallbackActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        WindowCompat.enableEdgeToEdge(getWindow());
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    () -> {
+                        if (mWebView != null && mWebView.canGoBack()) {
+                            mWebView.goBack();
+                        } else {
+                            finish();
+                        }
+                    }
+            );
+        }
+
         this.mLaunchUrl = this.getIntent().getParcelableExtra(KEY_LAUNCH_URI);
         if (!"https".equals(this.mLaunchUrl.getScheme())) {
             throw new IllegalArgumentException("launchUrl scheme must be 'https'");
         }
 
         if (
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP &&
-                Build.VERSION.SDK_INT <= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP
         ) {
             if (getIntent().hasExtra(KEY_NAVIGATION_BAR_COLOR)) {
                 int navigationBarColor = this.getIntent().getIntExtra(KEY_NAVIGATION_BAR_COLOR, 0);
